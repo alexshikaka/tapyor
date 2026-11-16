@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https: http://127.0.0.1:*; font-src 'self' data:; connect-src 'self' https://*.sndcdn.com https://*.soundcloud.cloud https://*.bcbits.com http://127.0.0.1:*; frame-src 'self' http://localhost:*; object-src 'none'; base-uri 'none'">
+<!-- Второй рубеж при XSS. Скриптам — только свои файлы: iframe_api YouTube больше не
+     выполняется в этом окне. Плеер вынесен на отдельную страницу ytplayer.html с другого
+     адреса (localhost), без preload и без моста к главному процессу (P5c №1).
+     Встроенные скрипты и обработчики on*= не выполнятся вовсе (с 01.11 ранний запуск — в boot.js).
+     Для стилей 'unsafe-inline' остаётся: атрибутов style в разметке и шаблонах сотни.
+     Сеть (B13): само окно ходит только за потоками через hls.js — connect-src списком хостов CDN,
+     а не «любой https» (при XSS данные некуда вынести). Обложки и медиа оставлены с https: осознанно:
+     они приходят с десятков меняющихся CDN, узкий список сломал бы показ. http://127.0.0.1:* — свой
+     сервер и медиа-прокси на петле. -->
+<title>Тапёр</title>
+<script src="boot.js"></script>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="skins/skins.css"><!-- модуль оболочек; без него работает «Стандарт» -->
+</head>
+<body data-tab="search">
+  <div class="app-shell">
+  <header>
+    <div class="titlebar-space"><div class="tbrand"><img class="logo" src="assets/icon.png" alt=""><span class="name">Тапёр</span><span class="badge" id="buildTag" hidden>dev</span></div></div>
+    <!-- Тестовый профиль (0.34.0): временная папка данных. Плашку показывает src/ui/29-debug.js -->
+    <div class="testbar" id="testProfileBar" hidden>
+      <div class="testbar-t"><b>Тестовый профиль.</b> Временная папка данных: ваши входы, ключи, плейлисты и очередь не тронуты.</div>
+      <button type="button" id="testProfileBack">Вернуться в мой профиль</button>
+    </div>
+    <!-- Имитация сбоев сети (0.34.0): показывается, пока включён хоть один режим; крестика нет,
+         только «Выключить» (выключает всё). Может стоять вместе с плашкой тестового профиля. -->
+    <div class="testbar faultbar" id="faultBar" hidden>
+      <div class="testbar-t" id="faultBarText"></div>
+      <button type="button" id="faultBarOff">Выключить</button>
+    </div>
+    <div class="hrow hrow1">
+      <div class="brand">
+        <nav id="tabs" aria-label="Разделы">
+          <button class="active" data-tab="search">Поиск</button>
+          <button data-tab="wave">Волна</button>
+          <button data-tab="my">Плейлисты</button>
+          <button data-tab="books">Книги и подкасты</button>
+          <button data-tab="hist">История</button>
+          <button data-tab="req" id="tabReq">Заказы<span class="tbadge" id="reqBadge" hidden></span></button>
+          <button data-tab="browser">Браузер</button>
+          <button data-tab="settings">Настройки</button>
+          <!-- Вкладка «Оформление» — последней, скромным значком палитры -->
+          <button data-tab="look" id="tabLook" class="tab-ic" title="Оформление" aria-label="Оформление"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-3.9-4-7.2-9-7.2z"></path><circle cx="7.5" cy="11" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="10" cy="7" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="14.5" cy="7" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="17" cy="10.5" r="1.2" fill="currentColor" stroke="none"></circle></svg></button>
+        </nav>
+      </div>
+      <div class="hspace"></div>
+      <button class="hwarn" id="healthWarn" hidden></button>
+      <button class="hwarn" id="sbotWarn" hidden title="Заказы из чата через Streamer.bot, а связи нет — открыть настройки"></button>
+      <button class="acct" id="acct" aria-label="Яндекс Музыка"></button>
+      <button class="acct" id="acctYt" aria-label="YouTube"></button>
+      <div class="upd">
+        <button class="badge zoomb" id="zoomBtn" title="Масштаб интерфейса" aria-label="Масштаб интерфейса" aria-haspopup="dialog" aria-expanded="false">Масштаб <span id="zoomLbl">100%</span></button>
+        <span class="badge" id="ver">версия…</span>
+        <span class="upd-area" id="updArea" aria-live="polite"></span>
+        <button class="upd-check" id="updCheck" data-tip="Проверить обновления" aria-label="Проверить обновления"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 11-2.3-5.7L20 8"></path><path d="M20 3v5h-5"></path></svg></button>
+      </div>
+    </div>
+  </header>
+
+
+  <main id="main">
+    <section class="results-col view" id="viewSearch" aria-label="Результаты поиска">
+      <div class="searchtop" id="hrow2">
+        <div class="searchwrap">
+          <div class="searchbar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9EA2B0" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+            <input id="search" type="text" placeholder="Название, исполнитель или ссылка (Яндекс, YouTube)" aria-label="Поиск">
+            <button class="smode" id="smode" aria-haspopup="menu" title="Как упорядочивать найденное"><b>Умный</b> ▾</button>
+          </div>
+          <div class="suggest" id="suggest"></div>
+          <div class="suggest smode-pop" id="smodePop"></div>
+        </div>
+        <div class="chips" id="chips">
+          <button class="chip active" data-f="all"><svg class="ic" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor" style="color:#C9CEDA"><rect x="3.2" y="3.2" width="7.2" height="7.2" rx="1.6"></rect><rect x="13.6" y="3.2" width="7.2" height="7.2" rx="1.6"></rect><rect x="3.2" y="13.6" width="7.2" height="7.2" rx="1.6"></rect><rect x="13.6" y="13.6" width="7.2" height="7.2" rx="1.6"></rect></svg>Везде</button>
+          <button class="chip" data-f="ym"><span class="ic ic-ym" style="color:#FFD43B" aria-hidden="true"></span>Яндекс</button>
+          <button class="chip" data-f="yt"><svg class="ic" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor" style="color:#FF5A52"><path fill-rule="evenodd" d="M6.6 5.4h10.8a4.2 4.2 0 0 1 4.2 4.2v4.8a4.2 4.2 0 0 1-4.2 4.2H6.6a4.2 4.2 0 0 1-4.2-4.2V9.6a4.2 4.2 0 0 1 4.2-4.2zm4.6 4.3v4.9l4.6-2.45z"></path></svg>YouTube</button>
+          <button class="chip" data-f="sc"><svg class="ic" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor" style="color:#FF7A1A"><rect x="2.9" y="11.4" width="2.2" height="5.6" rx="1.1"></rect><rect x="6.9" y="9.2" width="2.2" height="7.8" rx="1.1"></rect><rect x="10.9" y="6.6" width="2.2" height="10.4" rx="1.1"></rect><rect x="14.9" y="9.6" width="2.2" height="7.4" rx="1.1"></rect><rect x="18.9" y="12.2" width="2.2" height="4.8" rx="1.1"></rect></svg>SoundCloud</button>
+          <button class="chip" data-f="au"><svg class="ic" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor" style="color:#CC0FE0"><path d="M12 3.3 21.6 20.4H2.4z"></path></svg>Audius</button>
+          <button class="chip" data-f="lc" id="chipLc" hidden><svg class="ic" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor" style="color:#4ADE9A"><path d="M3 6.6A2.6 2.6 0 0 1 5.6 4h3c.66 0 1.3.26 1.76.73L11.6 6h6.8A2.6 2.6 0 0 1 21 8.6v8.8A2.6 2.6 0 0 1 18.4 20H5.6A2.6 2.6 0 0 1 3 17.4z"></path></svg>Мои файлы</button>
+        </div>
+        <!-- Что искать: музыка или речь. По умолчанию «Всё» -->
+        <div class="wseg kseg" id="kindSeg" role="tablist" aria-label="Что искать">
+          <button role="tab" data-k="all" class="on" aria-selected="true">Всё</button>
+          <button role="tab" data-k="mus" aria-selected="false">Музыка</button>
+          <button role="tab" data-k="sp" aria-selected="false">Книги и подкасты</button>
+        </div>
+      </div>
+      <!-- Список проверок живёт отдельно от выдачи (Ф3): поиск перерисовывает #results
+           целиком, а проверки должны оставаться на месте и показываться вместо выдачи. -->
+      <div class="ck-wrap" id="qcBox"></div>
+      <div class="results" id="results"></div>
+      <div class="plview" id="searchPl" hidden></div>
+    </section>
+
+    <section class="view wavev" id="viewWave" hidden aria-label="Волна">
+      <div class="wave-page">
+        <div class="card wave-hero">
+          <div class="wave-hero-row">
+            <div class="wave-hero-copy"><div class="wave-titleline"><h2>Моя волна</h2><span class="badge">Яндекс Музыка</span></div></div>
+            <div class="wave-actions"><button class="pbtn" id="wpPlay">▶ Включить выбранное</button><button class="btn ghost" id="wpShake">↻ Встряхнуть</button></div>
+          </div>
+          <div class="wave-sep"><span>Настроить эту волну</span></div>
+          <div class="wave-tune">
+            <div class="wave-tune-row"><div class="wave-tune-label">Характер</div><div class="wave-chips" id="wpDiv"><button class="wchip" data-v="default">Любое</button><button class="wchip" data-v="favorite">Любимое</button><button class="wchip" data-v="discover">Незнакомое</button><button class="wchip" data-v="popular">Популярное</button></div></div>
+            <div class="wave-tune-row"><div class="wave-tune-label">Настроение</div><div class="wave-chips" id="wpMood"><button class="wchip" data-v="all">Любое</button><button class="wchip" data-v="active">Бодрое</button><button class="wchip" data-v="fun">Весёлое</button><button class="wchip" data-v="calm">Спокойное</button><button class="wchip" data-v="sad">Грустное</button></div></div>
+            <div class="wave-tune-row"><div class="wave-tune-label">Язык</div><div class="wave-chips" id="wpLang"><button class="wchip" data-v="any">Любой</button><button class="wchip" data-v="russian">Русский</button><button class="wchip" data-v="not-russian">Иностранный</button><button class="wchip" data-v="without-words">Без слов</button></div></div>
+          </div>
+        </div>
+
+        <div class="wave-scroll">
+          <div class="wave-cats" id="wpCats"></div>
+
+          <div class="card wave-seed">
+            <div><b>Волна по треку</b><span>Похожее на конкретную песню или ссылку</span></div>
+            <div class="wave-seed-row"><input id="wpSeed" type="text" placeholder="исполнитель — название или ссылка"><button class="btn" id="wpSeedGo">Найти</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="view reqv histv" id="viewHist" hidden aria-label="История">
+      <div class="col-head">
+        <span class="hist-sum" id="histSum"></span>
+        <span class="rq-acts"><label class="hist-lim">Помнить <select class="field" id="histLimit" aria-label="Сколько треков помнить"><option value="100">100</option><option value="200">200</option><option value="300">300</option><option value="500">500</option><option value="1000">1000</option></select> треков</label><button class="rq-sm" id="histClear" title="Удалить всю историю прослушиваний">Очистить</button></span>
+      </div>
+      <div class="hist-list" id="histList"></div>
+    </section>
+    <section class="view reqv" id="viewReq" hidden aria-label="Заказы">
+      <div class="col-head">
+        <span class="rq-acts"><span class="rq-svc" id="rqSvc"></span><label class="rq-exact" title="Заказы, которые точно определились, сразу встают в очередь"><button class="toggle" data-set-tg="reqAuto" aria-label="Точные сразу в очередь"><span></span></button><span>Точные — сразу в очередь</span></label><button class="pbtn qadd" id="rqAddAll" hidden>+ Все точные в очередь</button><button class="rq-sm" id="rqTest" title="Проверить, как Тапёр разберёт сообщение">Пробный заказ</button><button class="rq-sm" id="rqClear" title="Удалить всю историю заказов: сообщения, активные и выполненные">Очистить</button></span>
+      </div>
+      <div class="rq-list" id="rqList"></div>
+    </section>
+
+    <section class="my-col view" id="viewMy" hidden aria-label="Плейлисты">
+      <div class="my-side" id="mySide"></div>
+      <div class="my-main"><div class="plview" id="myPl"></div></div>
+    </section>
+
+    <!-- Вкладка «Книги и подкасты»: слева — слушаю сейчас, подписки, книги, история; справа — страница -->
+    <section class="my-col view" id="viewBooks" hidden aria-label="Книги и подкасты">
+      <div class="my-side bkside" id="bkSide"></div>
+      <div class="my-main"><div class="plview" id="bkMain"></div></div>
+    </section>
+
+    <!-- Вкладка «Оформление» (пункт 7): та же карточка из настроек (#sLook .card) переезжает сюда, пока вкладка открыта -->
+    <section class="view set lookv" id="viewLook" hidden aria-label="Оформление">
+      <div class="look-in">
+        <div class="look-hero">
+          <div><h1>Оформление</h1><p>Оболочка меняет весь облик, цветовая тема — краски стандартной оболочки</p></div>
+          <div class="look-acts"><button class="pbtn" id="lookZoom"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5M8 11h6M11 8v6"></path></svg>Масштаб <span id="lookZoomLbl">100%</span></button></div>
+        </div>
+        <div class="look-grid">
+          <div class="look-slot" id="lookSlot"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view brv" id="viewBrowser" hidden aria-label="Браузер">
+      <div class="br-bar">
+        <div class="br-seg" id="brSvc"><button data-svc="ym">Яндекс Музыка</button><button data-svc="yt">YouTube</button><button data-svc="web" hidden>Сайт</button></div>
+        <button class="br-ic" id="brBack" title="Назад" aria-label="Назад"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></button><button class="br-ic" id="brFwd" title="Вперёд" aria-label="Вперёд"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg></button><button class="br-ic" id="brReload" title="Обновить" aria-label="Обновить"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 11-2.3-5.7L20 8"></path><path d="M20 3v5h-5"></path></svg></button>
+        <button class="br-col" id="brCollect" title="Собрать названия песен с открытой страницы (ВКонтакте, Telegram, YouTube…) и найти их на площадках">Собрать песни</button>
+        <form class="br-addr" id="brAddr" autocomplete="off"><input id="brUrl" type="text" spellcheck="false" placeholder="Адрес сайта или запрос для поиска" aria-label="Адрес"><span class="br-zoom"><button type="button" class="br-z" id="brZoomOut" title="Меньше масштаб сайта" aria-label="Уменьшить масштаб сайта">−</button><button type="button" class="br-z br-zp" id="brZoomPct" title="Сбросить масштаб сайта">100 %</button><button type="button" class="br-z" id="brZoomIn" title="Больше масштаб сайта" aria-label="Увеличить масштаб сайта">+</button></span></form>
+      </div>
+      <div class="br-note"><span id="brYmNote">Сайты сервисов прямо в Тапёре: Яндекс — с тем же входом.</span> В строке адреса можно открыть любой сайт или что-то найти. Заиграл сайт — Тапёр встаёт на паузу, заиграл Тапёр — сайт замолкает.</div>
+      <div class="br-wrap" id="brWrap"><div class="br-empty" id="brEmpty">Выбери сервис сверху</div></div>
+    </section>
+
+    <section class="view set set-tabs" id="viewSettings" hidden aria-label="Настройки">
+      <div class="set-in">
+        <aside class="set-side">
+          <!-- «О программе» — первым пунктом (G4): версия, сборка и ссылки нужны чаще всего -->
+          <button data-go="sAbout">О программе</button>
+          <button data-go="sAcc">Аккаунты</button>
+          <button data-go="sVpn">VPN и Яндекс</button>
+          <button data-go="sHealth">Состояние сервисов</button>
+          <button data-go="sLook">Оформление</button>
+          <button data-go="sSearch">Поиск</button>
+          <button data-go="sLocal">Музыка с компьютера</button>
+          <button data-go="sPlay">Воспроизведение</button>
+          <button data-go="sKeys">Горячие клавиши</button>
+          <button data-go="sApp">Программа</button>
+          <!-- Разделитель — вне блока, чтобы подсветка визарда обводила только сам блок -->
+          <div class="set-sep" aria-hidden="true"></div>
+          <!-- Блок «Стримерам» целиком — его подсвечивает визард (шаг OBS) -->
+          <div class="set-sblock" id="setStreamBlock">
+            <!-- Группа «Стримерам»: тумблер включает вкладку «Заказы», донаты и OBS; выключен — всё это скрыто -->
+            <div class="set-grp" id="setGrpStream">
+              <span class="set-grp-t">Стримерам</span>
+              <button class="toggle on" id="setStreamerTg" aria-pressed="true" aria-label="Функции для стримеров: заказы, донаты, OBS"><span></span></button>
+            </div>
+            <div class="set-grp-note">Заказы, донаты и OBS скрыты. Включи — появятся вкладка «Заказы» и эти разделы.</div>
+            <button data-go="sObs" class="st-only">OBS и стрим</button>
+            <button data-go="sVideo" class="st-only">Видео для OBS <span class="ov-dot" id="voDot" hidden title="OBS видит видео"></span></button>
+            <button data-go="sStream" class="st-only">Донаты</button>
+            <button data-go="sOrders" class="st-only">Заказы</button>
+            <button data-go="sSbot" class="st-only" id="goSbot">Streamer.bot <span class="ov-dot" id="sbDot" hidden title="Связь со Streamer.bot есть"></span></button>
+          </div>
+          <!-- Группа «Модули»: платные дополнения (пак стримера). Видна, если модуль есть в сборке — src/ui/24-bot.js, docs/BOT.md -->
+          <div class="set-grp st-only" id="setGrpMods"><span class="set-grp-t">Модули</span></div>
+          <button data-go="sPack" class="st-only" id="goPack">Пак стримера <span class="pill bot-pill" id="packPill"></span></button>
+          <button data-go="sBot" class="st-only" id="goBot" hidden>Чат-бот <span class="pill bot-pill" id="botPill"></span></button>
+          <button data-go="sOverlay" class="st-only" id="goOverlay" hidden>Оверлей-плейлист <span class="ov-dot" id="ovDot" hidden title="OBS видит оверлей"></span></button>
+          <button data-go="sMotion" class="st-only" id="goMotion" hidden>Моушн-оверлей</button>
+          <button data-go="sRemote" class="st-only" id="goRemote" hidden>Пульт с телефона</button>
+        </aside>
+        <div class="set-main">
+
+          <section id="sAcc">
+            <div class="sec-h"><h2>Аккаунты</h2><span>Пароли программа не видит — вход через браузер</span></div>
+            <div class="disc"><div style="font-size:18px">ℹ</div><div><b>Тапёр — неофициальная программа.</b> Он не связан с Яндексом, Google (YouTube), ВКонтакте или Spotify и работает с их музыкой так же, как ты в браузере — через их сайты и плееры. Если сервис что-то поменяет, кнопки Тапёра могут временно перестать работать: Тапёр сам это заметит (раздел «Состояние сервисов»), а слушать всегда можно во вкладке «Браузер».</div></div>
+            <div class="card">
+              <div class="srow">
+                <div class="ico" style="background:#FFD43B"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0E0F13" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 18V6l10-2v12"></path><circle cx="6.5" cy="18" r="2.5"></circle><circle cx="16.5" cy="16" r="2.5"></circle></svg></div>
+                <div class="sl"><div class="st">Яндекс Музыка</div><div class="sd" id="setYmText">Не выполнен вход</div></div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end"><button class="btn" id="setYmBtn">Войти</button><button class="toggle" data-set-tg="ymEnabled" aria-label="Искать в Яндексе"><span></span></button></div>
+              </div>
+              <div class="srow">
+                <div class="ico" style="background:var(--ln)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFD43B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"></path></svg></div>
+                <div class="sl"><div class="st">Запасной способ для Яндекса</div><div class="sd" id="setYwText">Если Яндекс не отдаст трек напрямую, Тапёр включит его через официальный сайт Яндекс Музыки в скрытом окне. Нужен вход на сайте</div></div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end"><button class="btn ghost" id="setYwLogin">Войти на сайте</button><button class="btn ghost" id="setYwTest">Проверить</button><button class="toggle" data-set-tg="ymWebFallback" aria-label="Запасной способ для Яндекса"><span></span></button></div>
+              </div>
+              <div class="srow">
+                <div class="ico" style="background:#FF4E45"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></div>
+                <div class="sl"><div class="st">YouTube и YouTube Music</div><div class="sd" id="setYtText">Поиск, видео и плейлисты работают без входа</div></div>
+                <button class="toggle" data-set-tg="ytEnabled" aria-label="Пользоваться YouTube"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="ico" style="background:transparent"></div>
+                <div class="sl"><div class="st">Аккаунт YouTube</div><div class="sd" id="setYtAcc">Не выполнен вход</div></div>
+                <button class="btn" id="setYtLogin">Войти</button>
+              </div>
+              <div class="srow" id="setYtCookRow" hidden>
+                <div class="ico" style="background:transparent"></div>
+                <div class="sl"><div class="st">Вход и для основного способа</div><div class="sd">Реже будет проверка «ты не робот». YouTube может заметить частое использование — если боишься за аккаунт, не включай</div></div>
+                <button class="toggle" id="setYtUseCk" aria-label="Использовать вход YouTube для основного способа"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="ico" style="background:#FF7A1A"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M3 15v3M6 13v5M9 11v7M12 9v9h7a3 3 0 0 0 0-6 5 5 0 0 0-7-3z" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"></path></svg></div>
+                <div class="sl"><div class="st">SoundCloud и Bandcamp</div><div class="sd">Ремиксы и треки, которых нет в других сервисах. Работают без входа. Ссылки Bandcamp вставляй прямо в поиск</div></div>
+                <button class="toggle" data-set-tg="scEnabled" aria-label="Искать на SoundCloud"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="ico" style="background:#CC0FE0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 3 19h18z"></path></svg></div>
+                <div class="sl"><div class="st">Audius</div><div class="sd">Бесплатная площадка независимых артистов: полные треки без подписки и без входа</div></div>
+                <button class="toggle" data-set-tg="auEnabled" aria-label="Искать на Audius"><span></span></button>
+              </div>
+            </div>
+          </section>
+
+          <!-- VPN и Яндекс: какие сети исключить из туннеля — src/ui/27-vpn.js -->
+          <section id="sVpn">
+            <div class="sec-h"><h2>VPN и Яндекс</h2><span>Если музыка тормозит при включённом VPN</span></div>
+            <div class="disc"><div style="font-size:18px">ℹ</div><div>Если включён VPN (WireGuard, TunnlTo, Amnezia и подобные), часть адресов Яндекса может уходить за границу. Из-за этого песня <b>может</b> начинаться с задержкой в 10–20 секунд, а иногда и не заиграть вовсе — но так бывает не всегда: зависит от провайдера, VPN и загрузки сети. Если музыка тормозит именно при включённом VPN, поможет исключение сетей Яндекса из туннеля — в VPN-клиенте это называется split tunneling, «исключённые адреса» или «Disallow IP».</div></div>
+            <div class="card">
+              <div class="srow">
+                <div class="sl">
+                  <div class="st">Сети Яндекса для исключения</div>
+                  <div class="sd">Скопируй строку и вставь в поле исключений своего VPN-клиента.</div>
+                </div>
+              </div>
+              <textarea id="vpnNets" readonly spellcheck="false" class="vpn-nets"></textarea>
+              <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
+                <button class="btn" id="vpnCopyBtn">Скопировать</button>
+                <button class="btn ghost" id="vpnRefreshBtn">Обновить</button>
+                <span class="sd" id="vpnCount"></span>
+              </div>
+            </div>
+          </section>
+          <section id="sHealth">
+            <div class="sec-h"><h2>Состояние сервисов</h2><span>Тапёр сам проверяет их раз в сутки, когда музыка не играет</span></div>
+            <div class="card">
+              <div id="healthBox"></div>
+              <div class="srow"><div class="sl"><div class="sd">Если что-то сломалось, обычно хватает подождать: правила для сайтов Тапёр берёт свежие с GitHub, а исправление прилетает без переустановки.</div></div><button class="btn" id="hsRun">Проверить сейчас</button></div>
+              <div class="srow">
+                <div class="sl"><div class="st">Отправлять отчёты об ошибках</div><div class="sd">Анонимно: площадка, этап, код ошибки, версии Тапёра и Windows. Без входов, ключей, имён и путей к папкам. Одинаковые ошибки собираются в одну задачу на GitHub — разработчик видит, что сломалось и у скольких людей</div><div class="sd" id="repNote" style="margin-top:6px"></div></div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end"><button class="btn ghost" id="repPreview">Что отправляется</button><button class="btn ghost" id="repTest">Проверить отправку</button><button class="toggle" data-set-tg="reportsEnabled" aria-label="Отправлять отчёты об ошибках"><span></span></button></div>
+              </div>
+            </div>
+          </section>
+
+
+          <section id="sLook">
+            <div class="sec-h"><h2>Оформление</h2><span>Оболочка и цветовая тема</span><label class="sec-tg">Вкладка вверху <button class="toggle on" id="setLookTab" aria-pressed="true" aria-label="Показывать вкладку «Оформление» в верхнем меню"><span></span></button></label></div>
+            <div class="card" style="padding:18px 20px">
+              <div class="skin-grid" id="skinGrid"></div>
+
+              <div class="skin-soft" id="skinAdjRow" hidden>
+                <div class="adj"><span>Яркость</span><input type="range" data-adj="b" min="20" max="100" value="100" aria-label="Яркость оболочки"><b data-adjv="b">100%</b></div>
+                <div class="adj"><span>Насыщенность</span><input type="range" data-adj="s" min="0" max="100" value="100" aria-label="Насыщенность оболочки"><b data-adjv="s">100%</b></div>
+                <div class="adj"><span>Контраст</span><input type="range" data-adj="c" min="0" max="100" value="100" aria-label="Контраст оболочки"><b data-adjv="c">100%</b></div>
+                <div class="adj adj-font"><span>Шрифт</span><select class="field skin-font-sel" id="skinFontSel" aria-label="Шрифт оболочки"></select></div>
+                <div class="adj adj-font" style="align-items:flex-start"><span>Цветовая схема</span><div class="look-schemes" id="skinSchemeIcons"></div></div>
+                <div class="te-note" id="skinSchemeDesc" style="margin-top:4px"></div>
+              </div>
+
+              <div class="skin-scheme" id="skinSchemeRow" hidden>
+                <div class="te-note" style="margin-top:0">Основные цвета оболочки. Поменяешь любой — схема станет «СВОЯ».</div>
+                <div class="skin-core" id="skinCoreRow"></div>
+              </div>
+
+              <div id="lookThemes">
+                <div class="look-h">Цветовая тема</div>
+                <div class="te-note" style="margin-top:0">Цвета интерфейса. Работает со стандартной оболочкой.</div>
+                <div class="te-list" id="teList"></div>
+                <div class="te" id="teEd" hidden></div>
+              </div>
+
+              <div class="look-viz">
+                <div class="look-h">Цвет визуализации</div>
+                <div class="seg" id="setVizColor"><button data-v="cover">Обложка</button><button data-v="accent">Акцент</button><button data-v="grad">Градиент</button></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="sSearch">
+            <div class="sec-h"><h2>Поиск</h2><span>Что показывать первым</span></div>
+            <div class="card">
+              <div class="srow" style="align-items:flex-start">
+                <div class="sl"><div class="st">Выдача поиска</div><div class="sd">Так же переключается кнопкой «Выдача» над результатами. Действует и в «Плейлисте из текста»</div></div>
+                <div class="smodes" id="setSmode"></div>
+              </div>
+              <div class="srow" style="align-items:flex-start">
+                <div class="sl"><div class="st">Порядок площадок</div><div class="sd">Для варианта «По площадкам» и когда треки одинаково подходят. Площадка, которая сейчас не работает, всё равно уходит в конец</div></div>
+                <div class="sorder" id="setSrcOrder"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="sLocal">
+            <div class="sec-h"><h2>Музыка с компьютера</h2><span id="setLibNote"></span></div>
+            <div class="card">
+              <div class="srow" style="align-items:flex-start">
+                <div class="sl"><div class="st">Папки с музыкой</div><div class="sd">MP3, FLAC, M4A/AAC, OGG/Opus, WAV. Тапёр читает названия, исполнителей, обложки и ровную громкость (ReplayGain) из файлов. Файлы никуда не загружаются</div><div id="setLibFolders" style="margin-top:10px"></div></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn" id="setLibAdd">Добавить папку…</button><button class="btn ghost" id="setLibRescan">Обновить</button></div>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Свои файлы в поиске</div><div class="sd">Найденное на компьютере показывается вместе с площадками (с зелёной точкой «Мои файлы»)</div></div>
+                <button class="toggle" data-set-tg="libInSearch" aria-label="Свои файлы в поиске"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Сначала свои файлы при сборе плейлистов</div><div class="sd">«Импорт» и «Плейлист из текста»: если песня есть на компьютере — берётся она, а не площадка</div></div>
+                <button class="toggle" data-set-tg="preferLocal" aria-label="Сначала свои файлы"><span></span></button>
+              </div>
+            </div>
+          </section>
+
+          <section id="sPlay">
+            <div class="sec-h"><h2>Воспроизведение</h2><span>Нагрузка на компьютер во время стрима</span></div>
+            <div class="card">
+              <div class="srow">
+                <div class="sl"><div class="st">Качество видео с YouTube</div><div class="sd">Ниже качество — меньше грузит компьютер и интернет. Действует со следующего трека</div></div>
+                <div class="seg" id="setQuality"><button data-v="1440">1440p</button><button data-v="1080">1080p</button><button data-v="720">720p</button><button data-v="480">480p</button><button data-v="audio">Только звук</button></div>
+              </div>
+              <div class="srow">
+                <div class="sl"><label class="st" for="setVol">Громкость при запуске</label><div class="sd">Чтобы после перезапуска музыка не оглушила зрителей</div></div>
+                <div style="display:flex;align-items:center;gap:12px"><input id="setVol" type="range" min="0" max="100" style="width:180px;accent-color:var(--ac)"><span class="mono" id="setVolVal" style="font-size:13px;color:var(--tx2);width:40px">80%</span></div>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Ровная громкость</div><div class="sd" id="setNormNote">Слишком громкие треки Яндекса приглушаются до общего уровня (по данным о громкости трека)</div></div>
+                <button class="toggle" data-set-tg="normalize" aria-label="Ровная громкость"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Плавный переход между треками</div><div class="sd">Конец трека затихает, а следующий в это время набирает громкость. Для треков без видео — Яндекса и «Только звук»</div></div>
+                <div class="seg" id="setXfade"><button data-v="0">Выкл</button><button data-v="3">3 с</button><button data-v="6">6 с</button><button data-v="10">10 с</button></div>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Включать фон, когда очередь закончилась</div><div class="sd">«Моя волна» или выбранный плейлист — чтобы на стриме не было тишины</div></div>
+                <button class="toggle" id="setWaveAuto" aria-label="Включать фон после очереди"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Готовить следующий трек заранее</div><div class="sd">Переход между треками без паузы</div></div>
+                <button class="toggle" data-set-tg="prefetch" aria-label="Готовить следующий трек заранее"><span></span></button>
+              </div>
+            </div>
+          </section>
+
+          <section id="sKeys">
+            <div class="sec-h"><h2>Горячие клавиши</h2><span>Работают, даже когда в фокусе игра</span></div>
+            <div class="card">
+              <div class="srow">
+                <div class="sl"><div class="st">Медиаклавиши</div><div class="sd">Кнопки ⏯ ⏭ ⏮ на клавиатуре и наушниках управляют Тапёром</div></div>
+                <button class="toggle" data-set-tg="mediaKeys" aria-label="Медиаклавиши управляют Тапёром"><span></span></button>
+              </div>
+              <div id="hkList"></div>
+              <div class="srow">
+                <div class="sl"><div class="sd" id="hkNote">Нажми на сочетание, чтобы назначить новое. Esc — отмена, Backspace — без сочетания</div></div>
+                <button class="btn ghost" id="hkReset">Как было</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="sApp">
+            <div class="sec-h"><h2>Программа</h2><span id="setVer">Тапёр</span></div>
+            <div class="card">
+              <div class="srow">
+                <div class="sl"><div class="st">Обновления</div><div class="sd" id="setUpdText">Проверяются при запуске</div></div>
+                <button class="btn" id="setUpdBtn">Проверить сейчас</button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Канал обновлений</div><div class="sd" id="setChanText">Стабильная — проверенные версии из открытого репозитория</div></div>
+                <div class="seg" id="setChannel"><button data-v="stable">Стабильная</button><button data-v="debug">Отладочная</button></div>
+              </div>
+              <!-- Что в целевом канале (А12): тот же номер другой сборки обычный autoUpdater не ставит -->
+              <div class="srow" id="setChanOffer" hidden>
+                <div class="sl"><div class="st" id="setChanOfferTitle"></div><div class="sd" id="setChanOfferText"></div></div>
+                <button class="btn" id="setChanOfferBtn" hidden></button>
+              </div>
+              <div class="srow" id="setChanWarn" hidden>
+                <div class="sl"><div class="st">⚠ Отладочная версия может сломаться в любой момент — в том числе во время стрима</div><div class="sd">Сюда новые версии приходят раньше, до проверки. Перед переходом Тапёр сохранит копию настроек и заказов. Вернуться на стабильную можно в любой момент — она догонит, когда выйдет следующая проверенная версия.</div></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="setChanStay">Остаться на стабильной</button><button class="btn ghost" id="setChanGo">Всё равно перейти</button></div>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Ставить обновления сами</div><div class="sd">Скачает тихо, а установит и перезапустится, только когда музыка не играет — посреди трека не прервёт</div></div>
+                <button class="toggle" data-set-tg="autoUpdate" aria-label="Ставить обновления автоматически"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Запускать вместе с Windows</div><div class="sd">Сразу свернётся в трей</div></div>
+                <button class="toggle" data-set-tg="autoStart" aria-label="Запускать вместе с Windows"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Крестик сворачивает в трей</div><div class="sd">Выключить — крестик будет закрывать программу совсем</div></div>
+                <button class="toggle" data-set-tg="closeToTray" aria-label="Крестик сворачивает в трей"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Следить за нагрузкой</div><div class="sd">Два графика в нижней панели: процессор и память. Рядом с обычным журналом ведётся подробный журнал замеров — его открывает пункт «Журналы → Журнал замеров» в меню значка у часов</div></div>
+                <button class="toggle" data-set-tg="perfWatch" aria-label="Следить за нагрузкой"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Журнал работы</div><div class="sd">Если что-то не играет — скопируй и пришли мне</div></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="setLogCopy">Скопировать лог</button><button class="btn ghost" id="setLogOpen">Открыть файл</button><button class="btn ghost" id="setMemReport" title="Кто занимает память: окно, сайты, служебные процессы">Отчёт о памяти</button></div>
+              </div>
+            </div>
+          </section>
+
+
+          <section id="sObs">
+            <div class="sec-h"><h2>OBS и стрим</h2><span>Виджет с заказами и название трека на экране</span></div>
+        <!-- Панель для OBS: лента сообщений с кнопками плеера, открывается в доке OBS -->
+        <div class="card">
+          <div class="srow" style="align-items:flex-start">
+            <div class="sl">
+              <div class="st">Панель с сообщениями для OBS</div>
+              <div class="sd">В OBS: «Вид» → «Панели» → «Пользовательские панели браузера» → вставь адрес. Внутри — лента сообщений и кнопки плеера.</div>
+              <div class="path" id="wgUrl" style="margin-top:8px">…</div>
+              <div class="sd" id="wgWarn" hidden style="margin-top:6px;color:#FFB86B"></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-self:flex-end">
+              <button class="btn" id="wgCopy">Скопировать адрес</button>
+              <button class="btn ghost" id="wgOpen">Открыть</button>
+            </div>
+          </div>
+          <!-- «Пульт плейлиста» (DK1): вторая панель OBS /dock2 — в том же блоке, что первая панель, до выбора порта.
+               Логика — src/ui/34-dock2.js. -->
+          <div class="srow" style="align-items:flex-start">
+            <div class="sl">
+              <div class="st">Пульт плейлиста для OBS</div>
+              <div class="sd">Вторая панель: поиск треков, очередь и кнопки плеера. В OBS: «Вид» → «Панели» → «Пользовательские панели браузера» → вставь адрес. Оформление — как у панели с сообщениями.</div>
+              <div class="path" id="d2Url" style="margin-top:8px">…</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-self:flex-end">
+              <button class="btn" id="d2Copy">Скопировать адрес</button>
+              <button class="btn ghost" id="d2Open">Открыть</button>
+            </div>
+          </div>
+          <div class="srow">
+            <div class="sl"><div class="st">Кнопка ⛔ у заказов Твича в док-панели очереди</div><div class="sd">Убрать трек и закрыть зрителю заказы — как пункт в меню очереди</div></div>
+            <button class="toggle" id="d2Ban" aria-label="Кнопка ⛔ у заказов Твича в док-панели очереди"><span></span></button>
+          </div>
+          <div class="srow">
+            <div class="sl"><label class="st" for="wgPort">Порт</label>
+              <div class="sd">Постоянный адрес панелей: http://127.0.0.1:порт/widget и /dock2. Меняй, если порт занят</div></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input id="wgPort" class="field" type="number" min="1024" max="65535" step="1" style="width:110px">
+              <button class="btn" id="wgPortApply">Применить</button>
+            </div>
+          </div>
+          <div class="srow">
+            <div class="sl"><label class="st" for="wgLook">Оформление панели</label>
+              <div class="sd">Как в текущей теме, или конкретная оболочка, или конкретная тема</div></div>
+            <select id="wgLook" class="field" style="flex:0 1 280px">
+              <option value="current">Как в текущей теме</option>
+              <optgroup label="Оболочки">
+                <option value="skin:dos">VGA / DOS</option>
+                <option value="skin:crt">Неон-скан</option>
+                <option value="skin:retro">Ретро-десктоп</option>
+              </optgroup>
+              <optgroup label="Темы">
+                <option value="theme:dark">Графит · тёмная</option>
+                <option value="theme:dark-l">Графит · светлая</option>
+                <option value="theme:mono">Монохром · тёмная</option>
+                <option value="theme:mono-l">Монохром · светлая</option>
+                <option value="theme:winter">Зима близко · тёмная</option>
+                <option value="theme:winter-l">Зима близко · светлая</option>
+                <option value="theme:magenta">Маджента · тёмная</option>
+                <option value="theme:magenta-l">Маджента · светлая</option>
+              </optgroup>
+              <optgroup label="Yami (стандартное оформление)">
+                <option value="yami:default">Yami · Default</option>
+                <option value="yami:acri">Yami · Acri</option>
+                <option value="yami:classic">Yami · Classic</option>
+                <option value="yami:grey">Yami · Grey</option>
+                <option value="yami:light">Yami · Light</option>
+                <option value="yami:rachni">Yami · Rachni</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="srow">
+            <div class="sl"><div class="st">Цвета схемы</div><div class="sd">Нажми на образец, чтобы скопировать HEX</div></div>
+            <div class="wg-prev" id="wgPrev"></div>
+          </div>
+          <div class="srow">
+            <div class="sl"><div class="st">Масштаб панели</div><div class="sd">Размер текста и кнопок внутри панели</div></div>
+            <div style="display:flex;align-items:center;gap:10px;flex:0 1 320px">
+              <input id="wgScale" type="range" min="60" max="160" step="5" style="flex:1" aria-label="Масштаб виджета">
+              <span id="wgScaleVal" class="mono" style="min-width:44px;text-align:right">100%</span>
+            </div>
+          </div>
+          <div class="srow">
+            <div class="sl"><div class="st">Новые сообщения</div><div class="sd">Где появляются свежие сообщения в ленте панели</div></div>
+            <div class="seg" id="wgOrder" style="flex:0 0 auto">
+              <button data-v="bottom" class="on">Снизу</button>
+              <button data-v="top">Сверху</button>
+            </div>
+          </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Писать название трека в файл</div><div class="sd">В OBS: источник «Текст (GDI+)» → «Читать из файла» → выбери этот файл</div></div>
+                <button class="toggle" data-set-tg="npEnabled" aria-label="Писать название трека в файл"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Файл</div><div class="path" id="setNpPath">…</div></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-self:flex-end">
+                  <button class="btn" id="setNpChoose">Изменить папку…</button>
+                  <button class="btn ghost" id="setNpOpen">Открыть папку</button>
+                </div>
+              </div>
+              <div class="srow" style="align-items:flex-start">
+                <div class="sl"><label class="st" for="setNpFmt">Как писать</label>
+                  <input id="setNpFmt" class="field" style="width:100%;margin-top:6px" spellcheck="false">
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px" id="setNpVars">
+                    <button class="var" data-var="{artist}" title="Исполнитель">{artist}</button>
+                    <button class="var" data-var="{title}" title="Название">{title}</button>
+                    <button class="var" data-var="{album}" title="Альбом (для Яндекса)">{album}</button>
+                    <button class="var" data-var="{source}" title="Откуда трек: Яндекс или YouTube">{source}</button>
+                  </div>
+                  <div class="npprev"><div class="k">Так будет на стриме</div><div class="v" id="setNpPrev"></div></div>
+                </div>
+              </div>
+              <div class="srow">
+                <div class="sl"><label class="st" for="setNpIdle">Когда ничего не играет</label><div class="sd">Пусто — надпись на стриме исчезнет</div></div>
+                <input id="setNpIdle" class="field" placeholder="пусто" style="flex:0 1 260px;font-family:Onest,sans-serif">
+              </div>
+            </div>
+          </section>
+
+          <!-- «Видео для OBS» (VO1): картинка YouTube отдельным источником «Браузер».
+               Страница живёт на локальном сервере (/video), окно шлёт ей состояние,
+               только пока её смотрит OBS или открыто превью. Код — src/ui/33-video-obs.js. -->
+          <section id="sVideo" class="st-only" hidden>
+            <div class="sec-h"><h2>Видео для OBS</h2><span>Картинка YouTube поверх стрима — отдельный источник «Браузер»</span></div>
+            <div class="card">
+              <div class="srow" style="align-items:flex-start">
+                <div class="sl">
+                  <div class="st">Адрес страницы</div>
+                  <div class="sd">В OBS: Источник → Браузер → вставь адрес, размер 1280 × 720 (или 1920 × 1080).</div>
+                  <div class="path" id="voUrl" style="margin-top:8px">…</div>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-self:flex-end">
+                  <button class="btn" id="voCopy" type="button">Скопировать</button>
+                </div>
+              </div>
+              <div class="srow">
+                <div class="sl"><label class="st" for="voQ">Качество видео</label><div class="sd">Применится со следующего трека</div></div>
+                <select id="voQ" class="field" style="flex:0 1 200px" aria-label="Качество видео для OBS">
+                  <option value="1440">1440p</option>
+                  <option value="1080">1080p</option>
+                  <option value="720">720p</option>
+                  <option value="480">480p</option>
+                  <option value="audio">Только звук</option>
+                </select>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Обводка</div><div class="sd">Рамка вокруг видео. Углы всегда немного закруглены.</div></div>
+                <button class="toggle" id="voBorderTg" data-set-tg="voBorder" aria-label="Обводка видео"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Цвет обводки</div><div class="sd" id="voColorNote">По умолчанию — акцент текущей темы</div></div>
+                <button class="btn" id="voColorBtn" type="button" title="Выбрать цвет обводки"><span id="voSw" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--ac);vertical-align:-2px;margin-right:8px"></span><span id="voHex" class="mono">…</span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Толщина обводки</div><div class="sd">2, 4 или 6 пикселей</div></div>
+                <div class="seg" id="voWidth" role="group" aria-label="Толщина обводки">
+                  <button type="button" data-v="2">2 px</button>
+                  <button type="button" data-v="4">4 px</button>
+                  <button type="button" data-v="6">6 px</button>
+                </div>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Скрывать, когда играет только музыка</div><div class="sd">Нет картинки YouTube — страница становится прозрачной. Выключи, чтобы вместо видео показывалась обложка трека.</div></div>
+                <button class="toggle" id="voHideAudioTg" data-set-tg="voHideAudio" aria-label="Скрывать, когда играет только музыка"><span></span></button>
+              </div>
+            </div>
+            <div class="card" style="margin-top:12px">
+              <div class="srow" style="align-items:flex-start">
+                <div class="sl"><div class="st">Превью</div><div class="sd">Живое превью этой же страницы. В OBS оно не считается зрителем.</div></div>
+                <div id="voPrev" style="width:360px;max-width:100%;aspect-ratio:16/9;background:var(--bg2);border:1px solid var(--ln);border-radius:var(--r-card);overflow:hidden">
+                  <iframe id="voFrame" title="Превью видео для OBS" tabindex="-1" aria-hidden="true" style="width:100%;height:100%;border:0;display:block"></iframe>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="sStream">
+            <div class="sec-h"><h2>Донаты</h2><span>Сервисы, через которые зрители заказывают музыку</span></div>
+            <div class="card" id="stDon"></div>
+            <div class="card" style="margin-top:12px">
+              <div class="srow">
+                <div class="sl"><div class="st">Цена за трек</div><div class="sd">Сколько треков оплачено, Тапёр считает по сумме доната. Не хватает — песня помечается «не хватает суммы», решаешь ты</div></div>
+                <div style="display:flex;gap:8px"><input class="field" id="stPrice" type="number" min="0" step="10" style="width:110px"><select class="field" id="stCur" style="width:90px"><option>RUB</option><option>UAH</option><option>KZT</option><option>USD</option><option>EUR</option></select></div>
+              </div>
+            </div>
+            <div class="sec-h" style="margin-top:24px"><h2 style="font-size:16px">Сайт-визитка</h2><span>Страница с кнопками доната и инструкцией, как заказать песню</span></div>
+            <div class="card" id="stSite"></div>
+          </section>
+
+          <section id="sOrders">
+            <div class="sec-h"><h2>Заказы</h2><span>Как Тапёр принимает песни из донатов</span></div>
+            <div class="card">
+              <div class="srow" style="align-items:flex-start">
+                <div class="sl"><div class="st">Где искать заказы</div><div class="sd" id="stSrcNote">Ссылки из сообщения открываются всегда. Порядок поиска не меняется: Яндекс → свои файлы → SoundCloud и Audius → YouTube</div></div>
+                <div class="srcpick" id="stSrc" role="group" aria-label="Где искать заказы"></div>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Самый длинный трек</div><div class="sd">Длиннее — пометка «длинный»: сам в очередь не попадёт</div></div>
+                <div style="display:flex;gap:8px;align-items:center"><input class="field" id="stMax" type="number" min="0" step="1" style="width:90px"><span class="sd">мин (0 — без ограничения)</span></div>
+              </div>
+              <div class="srow" style="align-items:flex-start">
+                <div class="sl"><div class="st">Стоп-лист</div><div class="sd">Слова, исполнители и треки, которые ты не ставишь — через запятую или с новой строки. Тапёр ищет их в названии, исполнителе и альбоме</div><textarea class="field st-ta" id="stStop" rows="4" spellcheck="false"></textarea><div><button class="btn ghost" id="stStopReset" style="margin-top:8px">Вернуть список по умолчанию</button></div></div>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Мат (18+) можно</div><div class="sd">Включено — треки с пометкой Explicit играют. Выключи, если хочешь решать вручную</div></div>
+                <button class="toggle" id="stExplicit" aria-label="Мат можно"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Повторять уже игравшие</div><div class="sd">Включено — один и тот же трек можно заказать много раз подряд. Выключи, чтобы такие заказы ждали решения</div></div>
+                <button class="toggle" id="stRepeat" aria-label="Повторять уже игравшие"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Каверы и другие версии</div><div class="sd">Включено — каверы, live, remix и другие версии играют. Выключи, чтобы версии с пометкой ждали решения</div></div>
+                <button class="toggle" id="stVersion" aria-label="Каверы и другие версии"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Внешние справочники</div><div class="sd">Короткие заказы без исполнителя Тапёр сверяет с Deezer, iTunes, Last.fm и MusicBrainz, чтобы найти оригинал. Туда уходит только текст заказа. Выключи — оригинал будет искаться только по площадкам</div></div>
+                <button class="toggle" id="stLookup" aria-label="Внешние справочники"><span></span></button>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Точные — сразу в очередь</div><div class="sd">Песня найдена точно, без спорных пометок и сумма хватает — встаёт в очередь сама. Остальное ждёт тебя во вкладке «Заказы»</div></div>
+                <button class="toggle" data-set-tg="reqAuto" aria-label="Точные сразу в очередь"><span></span></button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Streamer.bot (0.35, Э4): заказы из чата Twitch через Streamer.bot — src/ui/30-sbot.js.
+               Содержимое вкладок рисует скрипт; здесь только шапка и рамка. -->
+          <section id="sSbot" class="st-only" hidden>
+            <div class="sec-h">
+              <h2>Streamer.bot</h2>
+              <span>Бесплатно: заказы из чата Twitch через твой Streamer.bot</span>
+              <label class="sec-tg">Принимать заказы <button class="toggle" id="sbAcceptTg" aria-pressed="false" aria-label="Принимать заказы из Streamer.bot"><span></span></button></label>
+            </div>
+            <div class="sb-wrap">
+            <div class="bot-lic" id="sbHead">
+              <span class="pill" id="sbHeadPill">проверяю связь…</span>
+              <span class="bot-lic-t" id="sbHeadText"></span>
+              <button class="btn" id="sbTest" type="button">Проверить связь</button>
+            </div>
+            <div class="bot-note" id="sbSummary"></div>
+            <nav class="bot-tabs" aria-label="Разделы Streamer.bot" id="sbTabs">
+              <button class="on" data-sbtab="conn" type="button">Подключение</button>
+              <button data-sbtab="kit" type="button">Конструктор</button>
+              <button data-sbtab="api" type="button">Для умельцев</button>
+            </nav>
+            <div class="bot-body" data-sbpane="conn" id="sbConn"></div>
+            <div class="bot-body" data-sbpane="kit" id="sbKit" hidden></div>
+            <div class="bot-body" data-sbpane="api" id="sbApi" hidden></div>
+            </div>
+          </section>
+
+          <!-- Пак стримера: установка, пробный период, ключ — src/ui/26-packs.js, docs/PLAN-MODULES-SPLIT.md -->
+          <section id="sPack" class="st-only" hidden>
+            <div class="sec-h"><h2>Пак стримера</h2><span>Чат-бот и оверлеи — ставятся отдельно от Тапёра</span></div>
+            <div id="packPanel" class="bot-body"></div>
+          </section>
+
+          <!-- Модуль «Чат-бот Twitch» — всё содержимое рисует src/ui/24-bot.js -->
+          <section id="sBot" class="st-only" hidden>
+            <div class="sec-h"><h2>Чат-бот Twitch</h2><span>Заказы песен из чата: командой и за баллы канала</span></div>
+            <div id="botPanel"></div>
+          </section>
+
+          <!-- Модуль «Оверлей-плейлист» (страница для OBS) — всё содержимое рисует src/ui/25-overlay.js, docs/OVERLAY.md -->
+          <section id="sOverlay" class="st-only" hidden>
+            <div class="sec-h"><h2>Оверлей-плейлист</h2><span>Что играет и что дальше — поверх стрима, без фона</span></div>
+            <div id="ovPanel" class="bot-body"></div>
+          </section>
+
+          <!-- Модуль «Моушн-оверлей» (всплывашка при смене трека) — отдельный источник OBS, src/ui/25-overlay.js -->
+          <section id="sMotion" class="st-only" hidden>
+            <div class="sec-h"><h2>Моушн-оверлей</h2><span>Всплывашка при смене трека — отдельный источник для OBS, очереди нет</span></div>
+            <div id="motionPanel" class="bot-body"></div>
+          </section>
+
+          <!-- Модуль «Пульт с телефона» — всё содержимое рисует src/ui/35-remote.js, docs/REMOTE.md -->
+          <section id="sRemote" class="st-only" hidden>
+            <div class="sec-h"><h2>Пульт с телефона</h2><span>Управление плеером с телефона — через интернет или по домашнему Wi-Fi</span></div>
+            <div id="rmPanel" class="bot-body"></div>
+          </section>
+
+          <!-- Отладочное меню (вход: «tapyor debug» в поиске) — src/ui/29-debug.js.
+               Пункт левого меню создаётся после входа и живёт до перезапуска; раздел скрыт. -->
+          <section id="sDebug" hidden data-dbg-closed="1">
+            <div class="sec-h"><h2>Отладка</h2><span>Для проверки и починки — можно сломать нарочно</span></div>
+            <div class="disc"><div><b>Отладочное меню.</b> Здесь можно сломать Тапёр нарочно — каждое опасное действие переспросит.</div></div>
+            <div id="dbgTop"></div>
+            <div class="seg" id="dbgNav" role="tablist" aria-label="Разделы отладочного меню" style="margin:0 0 12px"></div>
+            <div id="dbgBody"></div>
+          </section>
+
+          <!-- «О программе» (А12): версия, сборка, коммит, канал и ссылки — заполняет src/ui/28-about.js -->
+          <section id="sAbout">
+            <div class="sec-h"><h2>❤️ Поддержать Тапёр</h2><span>По желанию и от чистого сердца</span></div>
+            <div class="card about-support">
+              <div class="srow" style="align-items:flex-start">
+                <div class="bot-note" style="flex:1 1 100%">
+                  Тапёр — проект одного человека, увлечённого стримингом и разработкой.<br><br>
+                  Для работы над ним я использую платные нейросети и инструменты. Ваша поддержка поможет уделять проекту больше времени и быстрее воплощать новые идеи.<br><br>
+                  Если вам нравится Тапёр и хочется поддержать его развитие, буду очень благодарен за донат по ссылкам ниже!<br><br>
+                  Спасибо, что вы со мной! ❤️
+                </div>
+              </div>
+              <div class="srow">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 10-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 000-7.8z"/></svg>
+                <div class="sl"><div class="st">DonationAlerts</div><div class="sd">Донат картой или сообщение на стриме</div></div>
+                <button class="btn acc" data-about="da">Поддержать</button>
+              </div>
+              <div class="srow">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/><path d="M16.5 14h1"/></svg>
+                <div class="sl"><div class="st">ЮMoney</div><div class="sd">Перевод на кошелёк</div></div>
+                <button class="btn acc" data-about="yoomoney">Поддержать</button>
+              </div>
+            </div>
+
+            <div class="sec-h" style="margin-top:24px"><h2 style="font-size:16px">О программе</h2><span id="aboutTagline">Тапёр — неофициальная программа</span></div>
+            <div class="card">
+              <div class="srow">
+                <div class="sl"><div class="st">Версия</div><div class="sd" id="aboutVer">…</div></div>
+                <span class="badge" id="aboutBuildBadge" hidden></span>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Сборка</div><div class="sd" id="aboutBuild">…</div></div>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Коммит</div><div class="sd mono" id="aboutCommit">…</div></div>
+              </div>
+              <div class="srow">
+                <div class="sl"><div class="st">Канал обновлений</div><div class="sd" id="aboutChannel">…</div></div>
+                <button class="btn ghost" data-go="sApp">Сменить в «Программе»</button>
+              </div>
+              <div class="srow">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15v-3a9 9 0 0 1 18 0v3"/><rect x="2.5" y="14" width="5" height="7" rx="1.5"/><rect x="16.5" y="14" width="5" height="7" rx="1.5"/></svg>
+                <div class="sl"><div class="st">Знакомство с Тапёром</div><div class="sd">Подсказки по основным шагам — можно пройти ещё раз</div></div>
+                <button class="btn" id="aboutWizard" type="button">Пройти знакомство заново</button>
+              </div>
+            </div>
+
+            <div class="sec-h" style="margin-top:24px"><h2 style="font-size:16px">Ссылки</h2><span>Откроются в браузере</span></div>
+            <div class="card">
+              <div class="srow">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 00-3.2 19.5c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.3-3.4-1.3-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.7-1.4-2.2-.2-4.6-1.1-4.6-5a3.9 3.9 0 011-2.7 3.6 3.6 0 01.1-2.7s.9-.3 2.9 1a9.8 9.8 0 015.2 0c2-1.3 2.9-1 2.9-1a3.6 3.6 0 01.1 2.7 3.9 3.9 0 011 2.7c0 3.9-2.4 4.8-4.6 5 .4.3.7 1 .7 2v2.9c0 .3.2.6.7.5A10 10 0 0012 2z"/></svg>
+                <div class="sl"><div class="st">Исходный код и версии</div><div class="sd">github.com/alexshikaka/tapyor</div></div>
+                <button class="btn" data-about="repo">Открыть</button>
+              </div>
+              <div class="srow">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/></svg>
+                <div class="sl"><div class="st">Сайт</div><div class="sd" id="aboutSiteNote">Сайт готовится к открытой бете</div></div>
+                <button class="btn ghost" data-about="site" disabled>Скоро</button>
+              </div>
+              <div class="srow">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="7" width="8" height="12" rx="4"/><path d="M8 11H5M8 15H5M19 11h-3M19 15h-3M9 7L7 5M15 7l2-2M12 3v4"/></svg>
+                <div class="sl"><div class="st">Сообщить об ошибке</div><div class="sd">Задачи на GitHub — с версией и сборкой из этого раздела</div></div>
+                <button class="btn" data-about="issues">Написать</button>
+              </div>
+              <div class="srow">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+                <div class="sl"><div class="st">Политика данных</div><div class="sd">Что и куда отправляется — без догадок</div></div>
+                <button class="btn" data-about="privacy">Открыть</button>
+              </div>
+              <div class="srow">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                <div class="sl"><div class="st">Telegram — канал</div><div class="sd">Новости и новые версии: t.me/tapyor</div></div>
+                <button class="btn" data-about="tg">Открыть</button>
+              </div>
+              <div class="srow">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                <div class="sl"><div class="st">Telegram — чат</div><div class="sd">Вопросы и ошибки: t.me/tapyorchat</div></div>
+                <button class="btn" data-about="tgchat">Открыть</button>
+              </div>
+            </div>
+            <div class="bot-note">Тапёр не связан с Яндексом, Google (YouTube), ВКонтакте, Spotify и Twitch. Названия сервисов — для понятности.</div>
+          </section>
+
+
+        </div>
+      </div>
+      <div class="set-bar" id="setBar" aria-hidden="true"><i></i></div>
+    </section>
+
+    <div class="yl-ov" id="ytDlg" hidden role="dialog" aria-modal="true" aria-label="Вход в YouTube">
+      <div class="yl-dlg">
+        <button class="yl-x" id="ytDlgClose" aria-label="Закрыть" title="Закрыть"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+        <h1><span style="width:30px;height:30px;border-radius:8px;background:#FF4E45;display:inline-flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></span>Вход в YouTube</h1>
+        <div class="yl-lead">Без входа YouTube в Тапёре тоже работает. Вход нужен, чтобы видеть свои плейлисты и лайки, смотреть без рекламы с Premium и реже ловить проверку «ты не робот». Можно подключить несколько способов.</div>
+        <div id="ytDlgBody"></div>
+      </div>
+    </div>
+
+    <div class="splitter" id="splitter" title="Потяни, чтобы изменить ширину"></div>
+
+    <aside class="queue-col" aria-label="Очередь">
+      <div class="qglow" id="qglow" aria-hidden="true"></div>
+      <div class="qhead">
+        <div class="qmode" id="qMode" role="group" aria-label="Режим очереди">
+          <button class="qm-l" data-qm="classic" title="Обычный плейлист: треки стоят на месте, нажал — заиграл">Классический плейлист</button>
+          <button class="toggle" id="qModeTg" aria-label="Переключить режим очереди"><span></span></button>
+          <button class="qm-l" data-qm="live" title="Сыгранное уезжает вверх, нажатый трек встаёт следующим — всё будет сыграно">Живая очередь</button>
+        </div>
+        <span id="qcount" class="mono">0</span>
+      </div>
+
+      <div class="wavecard" id="wavecard">
+        <div class="whead">
+          <div class="wicon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E0F13" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"></path></svg></div>
+          <div class="wtitle">
+            <div class="t" id="waveTitle">Моя волна</div>
+            <div class="s" id="waveSub">Включится, когда доиграет текущее</div>
+          </div>
+          <button class="wgear" id="waveGear" title="Настройки волны" aria-label="Настроить волну" aria-expanded="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="10" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg></button>
+          <button class="wplay" id="wavePlay" title="Включить фон сейчас">▶ Волна</button>
+          <button class="toggle on" id="waveToggle" title="Автоматически включать фон, когда очередь пуста" aria-pressed="true"><span></span></button>
+        </div>
+        <!-- Пункт 11: две вкладки и своя прокрутка; порядок — что играет → настроить → другая волна -->
+        <div class="wsettings" id="waveSettings" hidden>
+          <div class="wseg" id="waveSeg" role="tablist"><button role="tab" data-wt="wave" class="on" aria-selected="true">Волна Яндекса</button><button role="tab" data-wt="pls" aria-selected="false">Плейлисты фоном</button></div>
+          <div class="wscroll" id="waveScroll">
+            <div class="wpane" data-wp="wave">
+              <div class="wsub">Что играет</div>
+              <div class="wvlist wv-pills" id="waveVariants"></div>
+              <div class="wsub">Настроить эту волну</div>
+              <div class="wrow" id="waveDiv">
+            <span class="wlabel">Характер</span>
+            <button class="wchip active" data-v="default">Любое</button>
+            <button class="wchip" data-v="favorite">Любимое</button>
+            <button class="wchip" data-v="discover">Незнакомое</button>
+            <button class="wchip" data-v="popular">Популярное</button>
+          </div>
+              <div class="wrow" id="waveMood">
+            <span class="wlabel">Настроение</span>
+            <button class="wchip active" data-v="all">Любое</button>
+            <button class="wchip" data-v="active">Бодрое</button>
+            <button class="wchip" data-v="fun">Весёлое</button>
+            <button class="wchip" data-v="calm">Спокойное</button>
+            <button class="wchip" data-v="sad">Грустное</button>
+          </div>
+              <div class="wrow" id="waveLang">
+            <span class="wlabel">Язык</span>
+            <button class="wchip active" data-v="any">Любой</button>
+            <button class="wchip" data-v="russian">Русский</button>
+            <button class="wchip" data-v="not-russian">Иностранный</button>
+            <button class="wchip" data-v="without-words">Без слов</button>
+          </div>
+              <button class="wshake" id="waveShake"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 12c2-4 4 4 6 0s4 4 6 0 3-2 4-2"></path><path d="m17 5 3 3-3 3"></path></svg><span id="waveShakeT">Встряхнуть (со следующего трека)</span></button>
+              <div class="wsub">Другая волна: жанр, эпоха, занятие</div>
+              <div class="wgen" id="waveGenres"><span class="s" style="font-size:12px;color:var(--tx4)">Появится после входа в Яндекс</span></div>
+            </div>
+            <div class="wpane" data-wp="pls" hidden>
+              <div class="wrow wshuf"><span class="wshuf-t">Вперемешку</span><button class="toggle on" id="wavePlsShuf" aria-pressed="true" aria-label="Плейлист фоном — вперемешку"><span></span></button></div>
+              <div class="wvlist" id="wavePls"></div>
+              <button class="wshake" id="wavePlsShake"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"></path></svg><span>Перемешать заново (со следующего трека)</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nowcard">
+        <div class="video" id="vidBox"><video id="player" playsinline></video><audio id="aud"></audio><audio id="aud2"></audio><div id="ytFrame" hidden></div>
+          <!-- Пункт 12: нет картинки — обложка слева, столбики до правого края (цвет — из обложки) -->
+          <div class="viz" id="viz" hidden><img class="viz-cov" id="vizCov" alt=""><canvas class="viz-cv" id="vizCv" aria-hidden="true"></canvas></div>
+          <!-- Пункт 14: на весь экран -->
+          <button class="vid-fs" id="vidFs" title="На весь экран (двойной клик по видео; выход — Esc)" aria-label="На весь экран"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>
+          <label class="vid-q" title="Качество YouTube — применится со следующего трека"><span>Качество</span><select class="vid-q-sel" id="vidQ" aria-label="Качество видео YouTube"><option value="1440">1440p</option><option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option><option value="audio">Только звук</option></select></label>
+          <div class="vfs-bar" id="vfsBar">
+            <div class="vfs-ctl">
+              <button class="vfs-b" id="vfsPrev" title="Предыдущий (←← в начало трека)" aria-label="Предыдущий"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 6h2v12H7zM20 6v12l-9-6z"></path></svg></button>
+              <button class="vfs-b vfs-pp" id="vfsPlay" title="Пауза / играть (пробел)" aria-label="Пауза / играть"><svg class="i-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg><svg class="i-pause" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"></path></svg></button>
+              <button class="vfs-b" id="vfsNext" title="Следующий" aria-label="Следующий"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15 6h2v12h-2zM4 6v12l9-6z"></path></svg></button>
+            </div>
+            <div class="vfs-tx"><div class="vfs-t" id="vfsT"></div><div class="vfs-a" id="vfsA"></div></div>
+            <div class="vfs-seek" id="vfsSeek" role="slider" tabindex="0" aria-label="Перемотка" title="Перемотка (стрелки ← → — на 5 секунд)"><i id="vfsFill"></i><b id="vfsKnob"></b></div>
+            <span class="vfs-tm mono" id="vfsTm">0:00 / 0:00</span>
+            <label class="vfs-q" title="Качество YouTube — применится со следующего трека"><span>Качество</span><select class="vfs-q-sel" id="vfsQ" aria-label="Качество видео YouTube"><option value="1440">1440p</option><option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option><option value="audio">Только звук</option></select></label>
+            <button class="vfs-b wide" id="vfsFit" title="Растянуть на весь экран (края обрежутся) — клавиша F" aria-label="Растянуть на весь экран"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M8 9l-3 3 3 3M16 9l3 3-3 3"></path></svg><span id="vfsFitTx">Растянуть</span></button>
+            <button class="vfs-x" id="vfsX" title="Выйти из полного экрана (Esc)" aria-label="Выйти из полного экрана"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"></path></svg></button>
+          </div>
+          <div class="vidph" id="vidPh">
+            <img class="vidph-logo" src="assets/icon.png" alt="">
+                <div class="vidph-s">Найди трек — он появится здесь</div>
+          </div>
+        </div>
+        <div class="vmeta">
+          <div class="vm-l">
+            <div class="nplabel" id="nplabel">Сейчас играет</div>
+            <div class="t" id="card-title">Ничего не играет</div>
+            <div class="s" id="card-sub">Найди трек и запусти</div>
+          </div>
+          <span class="qacts"><button class="clearq" id="saveq" title="Сложить всё, что сейчас в очереди, в новый плейлист Тапёра">Сохранить плейлист</button><button class="clearq" id="clearq" title="Убрать из очереди всё, что ещё не играло">Очистить очередь</button></span>
+        </div>
+      </div>
+
+      <div class="hsplitter" id="hsplitter" title="Потяни, чтобы изменить высоту видео (двойной клик — по умолчанию)"></div>
+
+      <div class="qlist" id="queue">
+        <div class="muted">Пусто. Добавляй треки из поиска.</div>
+      </div>
+
+    </aside>
+  </main>
+  </div>
+
+  <div class="modal" id="loginModal" hidden>
+    <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="lmTitle">
+      <div class="mtitle" id="lmTitle"><span class="dot" style="background:#FFD43B"></span>Вход в Яндекс Музыку</div>
+      <div class="mtext" id="lmText">Готовлю вход…</div>
+      <div class="mcode mono" id="lmCode">• • • • • • •</div>
+      <div class="mhint" id="lmHint"><b class="mhint-acc">Код уже скопирован</b> — на странице Яндекса просто вставь его (Ctrl+V) и нажми «Разрешить». Приложение само заметит вход.</div>
+      <div class="mbtns">
+        <button class="mbtn pri" id="lmOpen">Перейти в браузер</button>
+        <button class="mbtn" id="lmInApp">Войти в окне приложения</button>
+        <button class="mbtn ghost" id="lmCancel">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="f-now">
+      <img class="f-cover" id="f-cover" alt="" style="display:none">
+      <div class="f-meta">
+        <div class="t" id="f-title">Ничего не играет</div>
+        <div class="f-artist" id="f-artist" hidden></div>
+        <div class="s" id="f-sub">Найди трек и нажми play</div>
+      </div>
+    </div>
+    <div class="f-center">
+      <div class="controls">
+        <div class="cleft">
+          <button class="likeb dis" id="dislikeBtn" hidden aria-pressed="false" title="Не нравится — Яндекс перестанет это предлагать"></button>
+          <button class="likeb" id="likeBtn" hidden aria-pressed="false" title="В «Мне нравится» Яндекса"></button>
+          <button class="wtrk" id="waveTrackBtn" hidden title="Похожее на этот трек — волна Яндекса после него">Волна по треку</button>
+          <!-- Речь (книга, подкаст): на месте лайка и волны — скорость и таймер сна -->
+          <button class="wtrk spdb" id="spdBtn" hidden title="Скорость воспроизведения" aria-haspopup="menu">1×</button>
+          <button class="wtrk slpb" id="sleepBtn" hidden title="Таймер сна" aria-haspopup="menu"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg><span id="sleepLbl">Таймер сна</span></button>
+        </div>
+        <button class="cbtn side" id="prev" title="Назад (больше 3 секунд — в начало трека)" aria-label="Предыдущий"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2v12H7zM20 6v12l-9-6z"></path></svg></button>
+        <button class="cbtn play" id="playpause" title="Пауза / играть" aria-label="Пауза / играть"></button>
+        <button class="cbtn side" id="next" title="Следующий" aria-label="Следующий"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15 6h2v12h-2zM4 6v12l9-6z"></path></svg></button>
+        <div class="volc" id="volBox" title="Громкость — можно крутить колёсиком мыши">
+          <button class="cbtn side vbtn" id="muteBtn" aria-label="Выключить звук" title="Выключить / включить звук"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"></path><path d="M15.5 8.5a5 5 0 010 7"></path></svg></button>
+          <input id="vol" type="range" min="0" max="100" step="any" value="80" aria-label="Громкость">
+          <span class="volv mono" id="volVal">80</span>
+        </div>
+      </div>
+      <div class="progress">
+        <span class="tm mono" id="tcur">0:00</span>
+        <div class="seek" id="seek" data-seek-tip="Перемотка"><div class="seek-fill" id="seekFill"></div><div class="seek-knob" id="seekKnob"></div></div>
+        <span class="tm mono r" id="tdur">0:00</span>
+      </div>
+    </div>
+    <div class="f-right">
+      <div class="perf" id="perfHud" hidden>
+        <div class="perf-g">
+          <svg class="perf-sp" viewBox="0 0 120 24" preserveAspectRatio="none" role="img" aria-label="Загрузка процессора за последние две минуты"><polyline id="perfCpuLine" points=""></polyline></svg>
+          <div class="perf-n"><span>ЦП</span><span class="mono" id="perfCpu">—</span></div>
+        </div>
+        <div class="perf-g">
+          <svg class="perf-sp" viewBox="0 0 120 24" preserveAspectRatio="none" role="img" aria-label="Расход памяти за последние две минуты"><polyline id="perfMemLine" points=""></polyline></svg>
+          <div class="perf-n"><span>Память</span><span class="mono" id="perfMem">—</span></div>
+        </div>
+      </div>
+    </div>
+  </footer>
+<script src="rank.js"></script>
+<script src="wave-variants.js"></script>
+<script src="theme.js"></script>
+<script src="reqparse.js"></script>
+<script src="sbot-check.js"></script>
+<script src="sbot-settings.js"></script>
+<script src="qc-list.js"></script>
+<script src="skins/skins-pack.js"></script>
+<script src="yt-msg.js"></script>
+<!-- Справка «Живая очередь» (WZ3): пункты и шаг визарда — один файл на два окна -->
+<script src="wizard/steps/livehelp.js"></script>
+<script src="ui.js"></script>
+<!-- Современное окно выбора цвета (вместо системного диалога) -->
+<div class="colv" id="colv" hidden>
+  <div class="colbox" role="dialog" aria-modal="true" aria-labelledby="colTitle">
+    <div class="colhead">
+      <b id="colTitle">Цвет</b>
+      <button class="colx" id="colClose" aria-label="Закрыть">✕</button>
+    </div>
+    <div class="colbody">
+      <div class="colsvwrap">
+        <canvas id="colSV" width="280" height="180"></canvas>
+        <i class="colmark" id="colMark"></i>
+      </div>
+      <div class="colside">
+        <input class="colhue" id="colHue" type="range" min="0" max="360" value="0" aria-label="Оттенок">
+        <div class="colrow">
+          <input class="te-hex colhex" id="colHex" maxlength="7" spellcheck="false" aria-label="Код цвета">
+          <button class="te-pick colpip" id="colPip" title="Взять цвет с экрана" aria-label="Пипетка">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 3l2 2-9.5 9.5-2-2L19 3z"/><path d="M11.5 13.5L4 21H2v-2l7.5-7.5"/></svg>
+          </button>
+        </div>
+        <div class="colrow colrgb">
+          <label>R<input id="colR" type="number" min="0" max="255"></label>
+          <label>G<input id="colG" type="number" min="0" max="255"></label>
+          <label>B<input id="colB" type="number" min="0" max="255"></label>
+        </div>
+        <div class="colpresets" id="colPresets"></div>
+      </div>
+    </div>
+    <div class="colfoot">
+      <span class="colnote">Тема перекрашивается сразу</span>
+      <button class="btn ghost" id="colCancel">Отмена</button>
+      <button class="btn" id="colDone">Готово</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

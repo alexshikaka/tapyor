@@ -1,0 +1,67 @@
+# 26.10: группа «Стримерам» в настройках (11.11: добавлен пункт «О программе» — А12; G4: он первый в меню) (тумблер прячет «Заказы», «Донаты», «OBS»), вкладка «Оформление» вверху и её тумблер
+import os, asyncio, subprocess
+CH='/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
+from playwright.async_api import async_playwright
+srv = subprocess.Popen(['python3','-m','http.server','8783','--bind','127.0.0.1'], cwd='.', stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def ok(c, m):
+    print(('✓ ' if c else '✗ ') + m)
+    if not c: raise SystemExit(1)
+async def main():
+    async with async_playwright() as p:
+        b=await p.chromium.launch(executable_path=(CH if os.path.exists(CH) else None))
+        pg=await b.new_page(viewport={'width':1440,'height':900}); await pg.add_init_script(path='mock5.js')
+        errs=[]; pg.on('pageerror', lambda e: errs.append(str(e)))
+        await pg.goto('http://127.0.0.1:8783/app2/index.html'); await pg.wait_for_timeout(800)
+        E=pg.evaluate
+        vis=lambda sel: E(f"(()=>{{var e=document.querySelector('{sel}'); return !!e && e.offsetParent!==null}})()")
+        ok(await vis('#tabReq') and await vis('#tabLook'), 'по умолчанию видны «Заказы» и «Оформление»')
+        names = await E("Array.from(document.querySelectorAll('.set-side button[data-go]')).map(b=>b.textContent.trim())")
+        ok(names[0] == 'О программе' and names[-10:] == ['OBS и стрим','Видео для OBS','Донаты','Заказы','Streamer.bot','Пак стримера','Чат-бот','Оверлей-плейлист','Моушн-оверлей','Пульт с телефона'] and 'Стримерам' not in names, 'меню: «О программе» первым, группа «Стримерам»: OBS, Видео для OBS, Донаты, Заказы, Streamer.bot, Пак стримера, Чат-бот, Оверлей-плейлист, Моушн-оверлей, Пульт с телефона: ' + ','.join(names))
+        ok('Сайт-визитка' not in names, 'отдельного пункта «Сайт-визитка» в меню нет')
+        ok(await E("document.getElementById('sDebug').hidden === true"), 'отладочный раздел спрятан до входа')
+        ok(await E("!document.querySelector('.set-side [data-go=sDebug]')"), 'пункта «Отладка» нет до входа')
+        secs = await E("Array.from(document.querySelectorAll('.set-main > section[id]')).map(s=>s.id).filter(id=>id!=='sDebug').slice(-10)")
+        ok(secs == ['sVideo','sStream','sOrders','sSbot','sPack','sBot','sOverlay','sMotion','sRemote','sAbout'], 'разделы в том же порядке: ' + ','.join(secs))
+        ok(await E("!document.getElementById('sSite') && !!document.querySelector('#sStream #stSite')"), 'сайт-визитка — внутри «Донатов», отдельного раздела нет')
+        ok(await E("document.querySelectorAll('#sObs [data-set-tg=reqAuto]').length === 0 && document.querySelectorAll('#sOrders [data-set-tg=reqAuto]').length === 1"), 'переключатель «Точные — сразу в очередь» только в «Заказах», без дубля в «OBS и стрим»')
+        await pg.click('#tabs [data-tab=req]'); await pg.wait_for_timeout(200)
+        await pg.click('#tabs [data-tab=settings]'); await pg.wait_for_timeout(200)
+        # 14.11: настройки открываются на «О программе» — переходим в «Программу» явно
+        await E("showSettingsPane('sApp')"); await pg.wait_for_timeout(100)
+        await pg.click('#setStreamerTg'); await pg.wait_for_timeout(200)
+        ok(not await vis('#tabReq') and not await vis('#sStream') and not await vis('#sOrders') and not await vis('.set-side [data-go=sObs]') and not await vis('.set-side [data-go=sVideo]') and await vis('.set-grp-note'), 'выкл: нет «Заказов», «Донатов», OBS и «Видео для OBS»; есть подсказка')
+        ok(await E("A.getSetting('streamerMode')") is False, 'настройка streamerMode сохранена')
+        await pg.click('#setStreamerTg'); await pg.wait_for_timeout(200)
+        ok(await vis('#tabReq') and await vis('.set-side [data-go=sStream]'), 'вкл снова: всё вернулось')
+        # вкладка «Оформление»
+        await pg.click('#tabs [data-tab=look]'); await pg.wait_for_timeout(300)
+        ok(await E("!!document.querySelector('#lookSlot #skinGrid') && document.querySelectorAll('#skinGrid').length===1"), 'карточка оформления переехала во вкладку (одна копия)')
+        n = await E("document.querySelectorAll('#skinGrid > *').length"); ok(n >= 4, 'оболочек в сетке: %d' % n)
+        await pg.click('#tabs [data-tab=settings]'); await pg.wait_for_timeout(200)
+        ok(await E("!!document.querySelector('#sLook #skinGrid')"), 'в настройках — снова на месте')
+        await E("showSettingsPane('sLook')"); await pg.click('#setLookTab'); await pg.wait_for_timeout(200)
+        ok(not await vis('#tabLook') and await E("A.getSetting('lookTab')") is False, 'тумблер «Вкладка вверху» прячет вкладку')
+        await pg.click('#setLookTab'); await pg.wait_for_timeout(200)
+        ok(await vis('#tabLook'), 'и возвращает')
+        # вкладка «Оформление» без блока «Как это выглядит»; подбор палитр
+        await pg.click('#tabs [data-tab=look]'); await pg.wait_for_timeout(200)
+        ok(await E("!document.querySelector('.look-prev')"), 'блока «Как это выглядит» нет')
+        await pg.click('#teList [data-th-new]'); await pg.wait_for_timeout(300)
+        ok(await E("getComputedStyle(document.querySelector('#lookSlot .te-side')).display") == 'none', 'во вкладке нет «Как будет выглядеть» и кода темы')
+        VS = "Array.from(document.querySelectorAll('#teVars .tvar .p')).map(p=>p.innerHTML).join('|')"
+        await pg.click('#teTones [data-tone=red]'); await pg.wait_for_timeout(700)
+        v1 = await E(VS); ok(v1.count('|') >= 5, 'нажал тон — варианты появились сами')
+        await pg.click('#tePick'); await pg.wait_for_timeout(700); v2 = await E(VS)
+        ok(v2 and v2 != v1, '«Ещё варианты» — другой набор')
+        await pg.click('#teChars [data-v=contrast]'); await pg.wait_for_timeout(700); v3 = await E(VS)
+        ok(v3 and v3 != v2, 'сменил акценты — варианты обновились')
+        await pg.click('#tePMode [data-v=light]'); await pg.wait_for_timeout(700); v4 = await E(VS)
+        ok(v4 and v4 != v3, 'сменил основу — варианты обновились')
+        await pg.click('#tabs [data-tab=search]'); await pg.wait_for_timeout(200)
+        os.makedirs('/tmp/t27', exist_ok=True)
+        await pg.click('#tabs [data-tab=look]'); await pg.wait_for_timeout(300); await pg.screenshot(path='/tmp/t27/look.png')
+        await pg.click('#tabs [data-tab=settings]'); await E("showSettingsPane('sApp')"); await pg.wait_for_timeout(100); await pg.click('#setStreamerTg'); await pg.wait_for_timeout(200); await pg.screenshot(path='/tmp/t27/set-off.png')
+        print('ошибки:', errs); ok(not errs, 'без ошибок')
+        await b.close()
+try: asyncio.run(main())
+finally: srv.terminate()

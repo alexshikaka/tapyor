@@ -1,0 +1,93 @@
+/* Шаг «Плейлисты». Цвета — переменные темы. */
+.wiz-pl-wait { margin: 0; font-size: 13px; color: var(--tx3); }
+.wiz-pl-card {
+  padding: 14px 16px;
+  border: 1px solid var(--ln2);
+  border-radius: var(--r-card);
+  background: var(--bg3);
+}
+.wiz-pl-l { font-size: 11px; color: var(--tx3); margin-bottom: 6px; }
+.wiz-pl-p { margin: 0; font-size: 13px; line-height: 1.45; }
+.wiz-pl-note {
+  padding: 12px 14px;
+  border: 1px solid var(--ln3);
+  border-radius: var(--r-card);
+  background: var(--bg0);
+}
+.wiz-pl-line {
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--tx2);
+}
+.wiz-pl-line.is-more { color: var(--tx4); }
+.wiz-pl-copy { margin-top: 8px; }
+.wiz-pl-copybtn {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--ln3);
+  border-radius: var(--r-ctl);
+  background: var(--bg4);
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.wiz-pl-copybtn:hover { border-color: var(--ac); }
+.wiz-pl-paste {
+  padding: 14px 16px;
+  border: 2px solid var(--ac);
+  border-radius: var(--r-card);
+  background: var(--bg3);
+}
+.wiz-pl-h { font-size: 15px; font-weight: 600; }
+.wiz-pl-h kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--bg4);
+  color: var(--tx);
+  font-family: inherit;
+  font-size: 12px;
+}
+.wiz-pl-small { margin-top: 4px; font-size: 13px; color: var(--tx3); }
+.wiz-pl-ok { font-size: 13px; color: var(--ac); font-weight: 600; }
+.wiz-pl-bar { height: 6px; border-radius: 3px; background: var(--bg4); overflow: hidden; }
+.wiz-pl-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ac); transition: width .2s; }
+.wiz-pl-done { font-size: 13px; line-height: 1.45; color: var(--ac); font-weight: 600; }
+.wiz-pl-result {
+  padding: 14px 16px;
+  border: 1px solid var(--ln2);
+  border-radius: var(--r-card);
+  background: var(--bg3);
+}
+.wiz-pl-play {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: var(--pri);
+  color: var(--prit);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wiz-pl-hint { margin: 0; font-size: 12px; line-height: 1.45; color: var(--tx3); }
+.wiz-pl-fallback {
+  align-self: flex-start;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--ln3);
+  border-radius: var(--r-ctl);
+  background: var(--bg4);
+  color: var(--tx);
+  font-size: 13px;
+  cursor: pointer;
+}
+.wiz-pl-fallback:hover { border-color: var(--ac); }
+
+@media (prefers-reduced-motion: reduce) {
+  .wiz-pl-bar i { transition: none; }
+}

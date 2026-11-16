@@ -1,0 +1,20 @@
+-- Схема базы пульта с телефона (YDB serverless). Выполнить один раз: консоль → YDB → база →
+-- «Навигация» → «Новый SQL-запрос». Функция создаёт таблицу сама при первом запуске (store-ydb.js),
+-- этот файл — для ручного создания и как справка.
+-- ev и cmds — JSON-строки; exp — абсолютное время конца сессии, TTL с минутой запаса удаляет строку.
+CREATE TABLE `remote_sessions` (
+  sid Utf8,
+  host_hash Utf8,
+  s Utf8,
+  sv Uint32,
+  f Utf8,
+  fv Uint32,
+  ev Utf8,
+  es Uint32,
+  cmds Utf8,
+  cs Uint32,
+  host_at Uint64,
+  phone_at Uint64,
+  exp Timestamp,
+  PRIMARY KEY (sid)
+) WITH (TTL = Interval("PT1M") ON exp);

@@ -1,0 +1,147 @@
+name: Сборка установщика (открытый репозиторий)
+
+# А3: по тегу vX.Y.Z GitHub Actions собирает установщик из ОТКРЫТОГО кода и кладёт его
+# в релиз ЭТОГО же репозитория ЧЕРНОВИКОМ. Тапёр черновики не видит: стабильный канал
+# подхватит версию только после того, как владелец поставит установщик из черновика,
+# послушает музыку и нажмёт «Опубликовать».
+#
+# Ключи сборки — те же имена, что в закрытом tapyor-player, но лежат в секретах ЭТОГО
+# репозитория (Settings → Secrets and variables → Actions). Значения и так попадают
+# внутрь установщика — здесь они нужны, чтобы собрать его из открытого кода.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      # Закреплено по полному SHA коммита, а не по тегу v4: тег можно переписать, SHA — нет.
+      # Рядом в комментарии — версия, чтобы было понятно, что обновлять.
+      - name: Забрать код
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Поставить Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      # npm ci, а не npm install: в открытом репозитории package-lock.json есть,
+      # и сборка должна ставиться ровно по нему.
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Проверки (синтаксис, тесты разбора, unit) — без интерфейсных тестов
+        run: node tools/check.mjs
+
+      - name: Линт (ESLint по всему src и tools)
+        run: npm run lint
+
+      - name: Скачать yt-dlp и сверить SHA-256
+        shell: pwsh
+        run: |
+          # В рантайме Тапёр проверяет yt-dlp по официальному SHA2-256SUMS (src/main.js).
+          # Здесь делаем то же самое: иначе бинарник в установщике — единственный непроверенный.
+          New-Item -ItemType Directory -Force -Path resources | Out-Null
+          $base = "https://github.com/yt-dlp/yt-dlp/releases/latest/download"
+          Invoke-WebRequest -Uri "$base/yt-dlp.exe" -OutFile "resources/yt-dlp.exe"
+          Invoke-WebRequest -Uri "$base/SHA2-256SUMS" -OutFile "$env:RUNNER_TEMP/SHA2-256SUMS"
+          $line = Get-Content "$env:RUNNER_TEMP/SHA2-256SUMS" | Where-Object { $_ -match "\syt-dlp\.exe$" } | Select-Object -First 1
+          if (-not $line) { Write-Error "yt-dlp: в SHA2-256SUMS нет строки для yt-dlp.exe"; exit 1 }
+          $expected = ($line -split "\s+")[0].ToLower()
+          $actual = (Get-FileHash "resources/yt-dlp.exe" -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { Write-Error "yt-dlp: хеш не совпал. Ожидался $expected, получен $actual"; exit 1 }
+          Write-Host "yt-dlp: SHA-256 совпал ($actual)"
+
+      - name: Ключи входа Google (из секретов этого репозитория)
+        shell: pwsh
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_PROXY_URL: ${{ secrets.GOOGLE_PROXY_URL }}
+        run: |
+          if ($env:GOOGLE_CLIENT_ID) { Set-Content -Path src/google-oauth.json -Value (@{ clientId = $env:GOOGLE_CLIENT_ID.Trim(); proxyUrl = "$($env:GOOGLE_PROXY_URL)".Trim() } | ConvertTo-Json -Compress) -Encoding utf8NoBOM; Write-Host "google-oauth.json: есть" } else { Write-Host "google-oauth.json: секрет не задан — вход через браузер будет выключен" }
+
+      - name: Ключ Last.fm (из секретов этого репозитория)
+        shell: pwsh
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+        run: |
+          if ($env:LASTFM_API_KEY) { Set-Content -Path src/lastfm.json -Value ('{"apiKey":"' + $env:LASTFM_API_KEY.Trim() + '"}') -Encoding utf8NoBOM; Write-Host "lastfm.json: есть" } else { Write-Host "lastfm.json: секрет не задан — страница исполнителя без Last.fm" }
+
+      - name: Ключи DonationAlerts (из секретов этого репозитория)
+        shell: pwsh
+        env:
+          DA_CLIENT_ID: ${{ secrets.DA_CLIENT_ID }}
+          DA_PROXY_URL: ${{ secrets.DA_PROXY_URL }}
+        run: |
+          if ($env:DA_CLIENT_ID) { Set-Content -Path src/da.json -Value (@{ clientId = $env:DA_CLIENT_ID.Trim(); proxyUrl = "$($env:DA_PROXY_URL)".Trim() } | ConvertTo-Json -Compress) -Encoding utf8NoBOM; Write-Host "da.json: есть" } else { Write-Host "da.json: секрет не задан — вход в DonationAlerts будет выключен" }
+
+      - name: Приложение GitHub для сайта-визитки (необязательно)
+        shell: pwsh
+        env:
+          GH_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+        run: |
+          if ($env:GH_OAUTH_CLIENT_ID) { Set-Content -Path src/github-oauth.json -Value ('{"clientId":"' + $env:GH_OAUTH_CLIENT_ID.Trim() + '"}') -Encoding utf8NoBOM; Write-Host "github-oauth.json: есть" } else { Write-Host "github-oauth.json: нет — вход в GitHub по ключу" }
+
+      # А12: метка сборки. В открытом репозитории всегда stable — это проверенная сборка.
+      # Форма --config.… : на Windows-раннере шаг идёт в pwsh, и «-c.extraMetadata.x=y»
+      # PowerShell разбирает как свой параметр.
+      - name: Метка сборки (stable)
+        id: buildtag
+        shell: pwsh
+        run: |
+          $short = "${{ github.sha }}".Substring(0, 7)
+          "SHORT_SHA=$short" >> $env:GITHUB_ENV
+          Write-Host "метка: stable, коммит $short"
+
+      # Сначала пакуем без публикации и смотрим внутрь: если в app.asar попал секрет,
+      # сборка падает здесь, и черновик не создаётся вовсе.
+      - name: Пробная упаковка без публикации
+        run: npm run ui && npx electron-builder --dir --publish never --config.extraMetadata.tapyorBuild=stable --config.extraMetadata.tapyorCommit=${{ env.SHORT_SHA }}
+
+      - name: Проверка установщика на секреты (обязательно)
+        run: node tools/check-asar.mjs
+
+      # Публикация — в САМ открытый репозиторий и ЧЕРНОВИКОМ. Штатного GITHUB_TOKEN
+      # хватает: он действует внутри своего репозитория.
+      - name: Собрать установщик и положить черновиком в релизы
+        run: npm run ui && npx electron-builder --publish always --config.publish.repo=tapyor --config.publish.releaseType=draft --config.extraMetadata.tapyorBuild=stable --config.extraMetadata.tapyorCommit=${{ env.SHORT_SHA }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Записать SHA-256 установщика в журнал сборки
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter '*.exe' | Select-Object -First 1
+          if (-not $exe) { Write-Error "в dist нет установщика"; exit 1 }
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "SETUP_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "::notice title=Установщик::$($exe.Name) — SHA-256 $hash"
+          @"
+          ## Сборка ${{ github.ref_name }}
+
+          | Файл | SHA-256 |
+          |---|---|
+          | $($exe.Name) | `$hash` |
+
+          Релиз создан **черновиком**. Что делать дальше:
+          1. скачать установщик из черновика этого релиза;
+          2. поставить и послушать музыку 5 минут (заказы, оверлей);
+          3. если всё в порядке — «Опубликовать» релиз. До этого стабильный канал версию не видит.
+          "@ >> $env:GITHUB_STEP_SUMMARY
+          Write-Host "SHA-256: $hash"
+
+      # Описание релиза: «что нового» из CHANGELOG.md + как скачать и поставить + SHA-256.
+      # Черновик уже создан шагом сборки, здесь меняется только его текст.
+      - name: Описание релиза (что нового, ссылка на установщик, SHA-256)
+        shell: pwsh
+        run: |
+          $run = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          node tools/release-notes.mjs "${{ github.ref_name }}" "$env:SETUP_SHA256" "$env:SHORT_SHA" "$run" | Out-File -FilePath notes.md -Encoding utf8
+          gh release edit "${{ github.ref_name }}" --notes-file notes.md --title "Тапёр ${{ github.ref_name }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

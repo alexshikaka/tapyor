@@ -1,0 +1,20 @@
+/* Шаг «Входы»: лампочки площадок и короткие пояснения. Кнопок шаг не рисует —
+   он подсвечивает настоящие кнопки Настройки → «Аккаунты». Цвета — только переменные темы. */
+.wiz-lg-status { display: flex; flex-direction: column; gap: 8px; }
+.wiz-lg-lamps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: var(--r-card);
+  background: var(--bg3);
+}
+.wiz-lg-lamp { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; }
+.wiz-lg-lamp .wiz-lamp { flex: none; }
+.wiz-lg-lamp.ok .wiz-lamp,
+.wiz-lg-lamp .wiz-lamp.ok { background: var(--ac); }
+.wiz-lg-lamp.warn .wiz-lamp,
+.wiz-lg-lamp .wiz-lamp.warn { background: var(--pri); }
+.wiz-lg-name { flex: 1 1 auto; min-width: 0; }
+.wiz-lg-state { color: var(--tx3); font-size: 12px; text-align: right; }
+.wiz-lg-note { margin: 0; font-size: 12px; line-height: 1.45; color: var(--tx3); }

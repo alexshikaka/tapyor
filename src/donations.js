@@ -1,0 +1,373 @@
+// Сервисы донатов: DonationAlerts (вход через официальное окно DA) и DonatePay (API-ключ стримера).
+// Тапёр только читает донаты: вывести деньги или поменять настройки сервиса этим доступом нельзя.
+// Ключи и токены хранятся зашифрованно (safeStorage) и никогда не пишутся в лог.
+const { shell, safeStorage } = require('electron');
+const { CLOUD_KEY, CLOUD_KEY_HEADER } = require('./cloud-key');
+const cloudError = require('./cloud-error');
+const http = require('http');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const DA_PORT = 47219; // адрес возврата, записанный в приложении DonationAlerts: http://127.0.0.1:47219/da-callback
+const DA_REDIRECT = 'http://127.0.0.1:' + DA_PORT + '/da-callback';
+const DA_SCOPES = 'oauth-user-show oauth-donation-index';
+const POLL = { da: 12000, dp: 30000 }; // DonatePay просит не чаще раза в 20 с — берём с запасом
+const MAX_BACKOFF = 300000; // при 429 ждём максимум 5 минут
+const NAMES = { da: 'DonationAlerts', dp: 'DonatePay' };
+// Какие сервисы включены.
+const PROVIDERS = ['da', 'dp'];
+
+let log = () => {};
+let store = { get: () => null, set: () => {} };
+let onDonation = () => {};
+let onStatus = () => {};
+let onAuthError = () => {};
+let onPollOk = () => {};
+let onPollFail = () => {};
+const state = { da: {}, dp: {} };
+const timers = {};
+const pollGen = {};   // поколение опроса: старый «висящий» tick после await не должен воскрешать таймер
+const pollRun = {};   // p → tick действующего цикла; null — опрос остановлен (R4, pokeNow)
+const pollBusy = {};  // p → поколение запроса, который сейчас в полёте (второй параллельный не пускаем)
+const errSeen = {};  // p → { key, at, recovered }: один и тот же сбой не пишем в лог каждые 30 с
+const ERR_LOG_MS = 10 * 60 * 1000;
+
+// 502/503 часто идут «пачками»: успешный опрос между ними не должен снова включать спам.
+function logErr(p, key, text) {
+  const now = Date.now(), prev = errSeen[p];
+  if (prev && prev.key === key && now - prev.at < ERR_LOG_MS) return;
+  errSeen[p] = { key, at: now, recovered: false };
+  log('Донаты: ' + NAMES[p] + ' — ' + text);
+}
+function logRecovered(p) {
+  const prev = errSeen[p];
+  if (!prev || prev.recovered) return;
+  prev.recovered = true;
+  log('Донаты: ' + NAMES[p] + ' — снова отвечает');
+}
+
+function setup(o) {
+  log = o.log || log; store = o.store || store; onDonation = o.onDonation || onDonation;
+  onStatus = o.onStatus || onStatus; onAuthError = o.onAuthError || onAuthError;
+  onPollOk = o.onPollOk || onPollOk; onPollFail = o.onPollFail || onPollFail;
+}
+// base64 — не шифрование: если ключницы ОС нет, предупреждаем в лог, а не молчим
+let plainWarned = false;
+function enc(s) {
+  const ok = safeStorage.isEncryptionAvailable();
+  if (!ok && !plainWarned) { plainWarned = true; log('ВНИМАНИЕ: системное шифрование недоступно, ключи сервисов донатов сохраняются в открытом виде (base64).'); }
+  return (ok ? safeStorage.encryptString(s) : Buffer.from(s, 'utf8')).toString('base64');
+}
+function dec(v) { try { const b = Buffer.from(v, 'base64'); return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(b) : b.toString('utf8'); } catch (e) { return ''; } }
+function secrets() { return store.get('donKeys') || {}; }
+function secret(p) {
+  const s = secrets()[p];
+  if (!s) return null;
+  try { return JSON.parse(dec(s) || 'null'); }
+  catch (e) { log('Донаты: не удалось прочитать сохранённый вход ' + p + ' — ' + e.message); return null; }
+}
+function setSecret(p, v) { const s = secrets(); if (v == null) delete s[p]; else s[p] = enc(JSON.stringify(v)); store.set('donKeys', s); }
+// Приложение сервиса может быть зарегистрировано без секретного слова — тогда параметр не отправляем вовсе
+function withSecret(o, cfg) { if (cfg && cfg.clientSecret) o.client_secret = cfg.clientSecret; return o; }
+// Обмен кода и обновление входа DonationAlerts.
+// Если в da.json есть proxyUrl — секрет лежит в облачной функции (server/yc-da) и в установщик
+// не попадает; Тапёр отправляет туда только код. Путь с clientSecret оставлен для сборок до 0.27.4.
+async function daTokenRequest(cfg, params) {
+  if (cfg && cfg.proxyUrl) {
+    return getJson(cfg.proxyUrl, { method: 'POST', body: JSON.stringify(params), headers: { 'Content-Type': 'application/json', [CLOUD_KEY_HEADER]: CLOUD_KEY } });
+  }
+  const body = new URLSearchParams(withSecret(Object.assign({ client_id: cfg.clientId }, params), cfg));
+  return getJson('https://www.donationalerts.com/oauth/token', { method: 'POST', body: body.toString(), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+}
+function daConfig() {
+  for (const p of [path.join(__dirname, 'da.json'), path.join(process.resourcesPath || '', 'da.json')]) {
+    try { const j = JSON.parse(fs.readFileSync(p, 'utf8')); if (j.clientId) return j; } catch (e) {}
+  }
+  return null;
+}
+async function getJson(url, opts) {
+  const r = await fetch(url, Object.assign({ signal: AbortSignal.timeout(15000) }, opts || {}));
+  const txt = await r.text();
+  let j = null; try { j = JSON.parse(txt); } catch (e) {}
+  if (!r.ok) {
+    // Если ответила облачная функция Тапёра, у неё свой код в tapyor_error: показываем её текст.
+    // Статус и retry-after ниже не меняются — на них держатся ретраи и остановка опроса.
+    const own = cloudError.withRetry(cloudError.explain(j), j);
+    const err = new Error(own || ('HTTP ' + r.status + (j && (j.message || j.error) ? ': ' + (j.message || j.error) : '')));
+    err.status = r.status;
+    const ra = r.headers.get('retry-after');           // сколько сервис просит подождать (в секундах или датой)
+    if (ra) { const n = /^\d+$/.test(ra.trim()) ? Number(ra) : Math.round((Date.parse(ra) - Date.now()) / 1000); if (isFinite(n) && n > 0) err.retryAfter = n; }
+    throw err;
+  }
+  if (j == null) throw new Error('сервис ответил не JSON');
+  return j;
+}
+const num = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.').replace(/\s/g, '')); return isFinite(n) ? n : 0; };
+const when = (v) => { const t = Date.parse(String(v || '').replace(' ', 'T').replace(/\.\d+$/, '')); return isFinite(t) ? t : Date.now(); };
+
+// --- DonationAlerts ---
+let daPending = null;
+function daLogin() {
+  const cfg = daConfig();
+  if (!cfg) return Promise.resolve({ error: 'not-configured' });
+  if (daPending) { try { daPending.cancel(); } catch (e) {} }
+  return new Promise((resolve) => {
+    const st = crypto.randomBytes(12).toString('hex');
+    let done = false;
+    const page = (ok, t) => '<!doctype html><meta charset="utf-8"><title>Тапёр</title><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#15161C;color:#ECEDF2;font:16px Segoe UI,system-ui,sans-serif"><div style="text-align:center;max-width:420px"><div style="font-size:44px">' + (ok ? '✓' : '⚠') + '</div><h2>' + (ok ? 'Готово!' : 'Вход не выполнен') + '</h2><p style="color:#9EA2B0">' + t + '</p></div>';
+    const server = http.createServer(async (req, res) => {
+      const u = new URL(req.url, 'http://127.0.0.1');
+      if (u.pathname !== '/da-callback') { res.writeHead(404); res.end(); return; }
+      const code = u.searchParams.get('code');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      log('вход DA: state ' + (u.searchParams.get('state') ? 'вернулся' : 'не вернулся'));
+    // B-01: DA возвращает state (проверено владельцем 08.11.2026) — проверка строгая: без state или с чужим — отказ.
+    if (!code || u.searchParams.get('state') !== st) { if (code) log('вход DA: state не совпал — вход отклонён'); res.end(page(false, 'DonationAlerts не выдал доступ. Закрой вкладку и попробуй ещё раз в Тапёре.')); finish({ error: u.searchParams.get('error') || 'no-code' }); return; }
+      try {
+        const j = await daTokenRequest(cfg, { grant_type: 'authorization_code', redirect_uri: DA_REDIRECT, code });
+        // Облако кладёт причину в tapyor_error: показываем её вместо «нет токена».
+        // Прямой запрос к DonationAlerts этого поля не содержит — его поведение не меняется.
+        if (!j.access_token) throw new Error(cloudError.withRetry(cloudError.explain(j), j) || 'нет токена');
+        setSecret('da', { at: j.access_token, rt: j.refresh_token || '', exp: Date.now() + (j.expires_in || 3600 * 24 * 30) * 1000 - 60000 });
+        const me = await daMe().catch(() => null);
+        store.set('donAccounts', Object.assign({}, store.get('donAccounts') || {}, { da: { name: (me && me.name) || 'DonationAlerts', avatar: (me && me.avatar) || '' } }));
+        res.end(page(true, 'Тапёр подключён к DonationAlerts' + (me ? ' как ' + String(me.name).replace(/[<>]/g, '') : '') + '. Он видит только донаты. Эту вкладку можно закрыть.'));
+        log('Донаты: DonationAlerts подключён');
+        markAllSeen('da').catch((e) => log('Донаты: старые донаты DonationAlerts не отмечены — ' + ((e && e.message) || e)));
+        finish({ ok: true, name: me && me.name });
+      } catch (e) {
+        log('Донаты: DonationAlerts — ошибка входа ' + e.message);
+        res.end(page(false, 'Ошибка: ' + String(e.message).replace(/[<>]/g, '') + '. Закрой вкладку и попробуй ещё раз.'));
+        finish({ error: e.message });
+      }
+    });
+    const timer = setTimeout(() => finish({ error: 'timeout' }), 5 * 60 * 1000);
+    function finish(r) { if (done) return; done = true; clearTimeout(timer); setTimeout(() => { try { server.close(); } catch (e) {} }, 1500); daPending = null; if (r.ok) startPoll('da'); onStatus(); resolve(r); }
+    daPending = { cancel: () => finish({ error: 'cancelled' }) };
+    server.on('error', (e) => finish({ error: e.code === 'EADDRINUSE' ? 'порт ' + DA_PORT + ' занят другой программой' : e.message }));
+    server.listen(DA_PORT, '127.0.0.1', () => {
+      const url = 'https://www.donationalerts.com/oauth/authorize?' + new URLSearchParams({ client_id: cfg.clientId, redirect_uri: DA_REDIRECT, response_type: 'code', scope: DA_SCOPES, state: st }).toString();
+      shell.openExternal(url);
+      log('Донаты: открыл окно входа DonationAlerts');
+    });
+  });
+}
+async function daToken(force) {
+  const s = secret('da'); if (!s) return null;
+  if (!force && s.exp > Date.now()) return s.at;
+  const cfg = daConfig(); if (!cfg || !s.rt) return s.at;
+  try {
+    const j = await daTokenRequest(cfg, { grant_type: 'refresh_token', refresh_token: s.rt, scope: DA_SCOPES });
+    if (j.access_token) { setSecret('da', { at: j.access_token, rt: j.refresh_token || s.rt, exp: Date.now() + (j.expires_in || 3600) * 1000 - 60000 }); return j.access_token; }
+    // Облако могло ответить своим кодом без токена: пишем понятную причину, но старый токен оставляем —
+    // если он ещё жив, опрос продолжится как раньше.
+    const own = cloudError.explain(j);
+    if (own) log('Донаты: DonationAlerts — вход не обновился: ' + cloudError.withRetry(own, j));
+  } catch (e) { log('Донаты: DonationAlerts — не обновился вход ' + e.message); if (force) throw e; }
+  return s.at;
+}
+async function daMe() { const t = await daToken(); const j = await getJson('https://www.donationalerts.com/api/v1/user/oauth', { headers: { Authorization: 'Bearer ' + t } }); return j.data || j; }
+async function daList() {
+  let t = await daToken(); if (!t) throw new Error('не подключён');
+  const load = (tok) => getJson('https://www.donationalerts.com/api/v1/alerts/donations?page=1', { headers: { Authorization: 'Bearer ' + tok } });
+  let j;
+  try { j = await load(t); }
+  catch (e) {
+    if (e.status !== 401) throw e;
+    try { t = await daToken(true); } // 401 при формально живом токене — один принудительный refresh
+    catch (e2) { e2.status = 401; throw e2; } // refresh не удался — повод остановить опрос, а не backoff
+    j = await load(t);
+  }
+  return (j.data || []).map((d) => ({ prov: 'da', id: String(d.id), name: d.username || d.name || 'Аноним', text: d.message || '', amount: num(d.amount), currency: d.currency || '', amountMain: d.amount_in_user_currency != null ? num(d.amount_in_user_currency) : null, at: when(d.created_at), kind: d.message_type || 'text' }));
+}
+
+// --- DonatePay (ключ из «Настройки → API» на donatepay.ru) ---
+async function dpMe(key) { const j = await getJson('https://donatepay.ru/api/v1/user?access_token=' + encodeURIComponent(key)); if (j.status && j.status !== 'success') throw new Error(j.message || 'ключ не подошёл'); return j.data || j; }
+async function dpList() {
+  const s = secret('dp'); if (!s) throw new Error('не подключён');
+  const j = await getJson('https://donatepay.ru/api/v1/transactions?' + new URLSearchParams({ access_token: s.key, type: 'donation', status: 'success', limit: '25', order: 'DESC' }).toString());
+  if (j.status && j.status !== 'success') throw new Error(j.message || 'ошибка DonatePay');
+  return (j.data || []).map((d) => { const v = d.vars || {}; return { prov: 'dp', id: String(d.id), name: v.name || d.name || 'Аноним', text: v.comment || d.comment || d.what || '', amount: num(d.sum), currency: 'RUB', amountMain: null, at: when((d.created_at && d.created_at.date) || d.created_at) }; });
+}
+const LIST = { da: daList, dp: dpList };
+
+async function setKey(p, key) {
+  if (p !== 'dp') return { error: 'неизвестный сервис донатов' };
+  key = String(key || '').trim();
+  if (!key) { disconnect(p); return { ok: true }; }
+  try {
+    const me = await dpMe(key);
+    setSecret(p, { key });
+    store.set('donAccounts', Object.assign({}, store.get('donAccounts') || {}, { [p]: { name: (me && (me.name || me.nickname || me.login)) || NAMES[p], avatar: (me && (me.avatar || me.avatarUrl)) || '' } }));
+    log('Донаты: ' + NAMES[p] + ' подключён');
+    // Отметку старых донатов делает первый опрос (отдельный запрос не нужен — DonatePay ругается на частые)
+    startPoll(p, 'mark'); onStatus();
+    return { ok: true, name: me && (me.name || me.nickname) };
+  } catch (e) {
+    log('Донаты: ' + NAMES[p] + ' — ключ не подошёл (' + e.message + ')');
+    const err = e.status === 401 || e.status === 403 ? 'ключ не подошёл'
+      : e.status === 429 ? 'DonatePay ограничил частоту запросов — подожди минуту и попробуй снова'
+      : e.message;
+    return { error: err };
+  }
+}
+function disconnect(p) {
+  setSecret(p, null); stopPoll(p); state[p] = {}; delete errSeen[p];
+  const a = Object.assign({}, store.get('donAccounts') || {}); delete a[p]; store.set('donAccounts', a);
+  log('Донаты: ' + NAMES[p] + ' отключён'); onStatus();
+  return true;
+}
+
+// Уже показанные донаты: не повторять и не заваливать старыми при первом подключении
+function seen() { return store.get('donSeen') || {}; }
+function addSeen(p, ids) { const s = seen(); const cur = s[p] || []; ids.forEach((id) => { if (cur.indexOf(id) < 0) cur.push(id); }); s[p] = cur.slice(-400); store.set('donSeen', s); }
+async function markAllSeen(p) { const list = await LIST[p](); addSeen(p, list.map((d) => d.id)); }
+
+// Что делать с ошибкой опроса (аудит 0.34.0, A9). 401 И 403 — вход отозван: токен
+// недействителен или у приложения отобрали права. Переподключать бессмысленно —
+// показываем «войдите заново». 429 — пауза, остальное — отступить и повторить.
+function pollErrorAction(status) {
+  if (status === 401 || status === 403) return 'auth';
+  if (status === 429) return 'rate';
+  return 'retry';
+}
+
+async function poll(p, mode) {
+  try {
+    const list = await LIST[p]();
+    if (mode === 'mark') { // сразу после подключения: запомнить уже существующие донаты, не показывать их заново
+      addSeen(p, list.map((d) => d.id));
+      state[p] = { ok: true, at: Date.now(), nErr: 0, n429: 0 };
+      logRecovered(p);
+      try { onPollOk({ prov: p }); } catch (x) {}
+      onStatus(); return;
+    }
+    const was = seen()[p] || [];
+    const fresh = list.filter((d) => was.indexOf(d.id) < 0).sort((a, b) => a.at - b.at);
+    state[p] = { ok: true, at: Date.now(), nErr: 0, n429: 0 }; // успех — счётчик ошибок и паузу сбрасываем
+    logRecovered(p);
+    try { onPollOk({ prov: p }); } catch (x) {}
+    for (const d of fresh) {
+      // Старше суток при первом подключении не заказываем, но помечаем просмотренным.
+      if (mode === 'missed' && Date.now() - d.at > 24 * 3600 * 1000) { addSeen(p, [d.id]); continue; }
+      if (mode === 'missed') d.missed = true;
+      // Помечаем просмотренным только после того, как заказ действительно записан:
+      // иначе падение между addSeen и записью теряет оплаченный донат навсегда.
+      await onDonation(d);
+      addSeen(p, [d.id]);
+    }
+  } catch (e) {
+    const prev = state[p] || {};
+    const action = pollErrorAction(e.status);
+    let msg = action === 'auth' ? 'вход устарел — подключи заново' : e.message;
+    if (action === 'auth') {
+      // Токен не обновился даже принудительно: дальше опрашивать бессмысленно.
+      stopPoll(p);
+      state[p] = { ok: false, error: msg, at: Date.now(), waitUntil: 0, n429: 0, nErr: 0 };
+      logErr(p, 'auth', msg);
+      if (prev.error !== msg) { try { onAuthError({ prov: p, error: msg }); } catch (x) {} }
+      onStatus();
+      return;
+    }
+    let waitUntil = 0, n429 = prev.n429 || 0, nErr = prev.nErr || 0;
+    if (action === 'rate') {
+      n429 += 1;
+      const ra = Number(e.retryAfter) || 0;
+      const delay = Math.min(Math.max(ra * 1000, POLL[p] * Math.pow(2, n429)), MAX_BACKOFF);
+      waitUntil = Date.now() + delay;
+      msg = 'слишком частые запросы — подожду ' + Math.round(delay / 1000) + ' с';
+      logErr(p, '429', 'ограничил частоту запросов, перехожу на паузу');
+    } else {
+      // Любая ошибка сети/сервиса — не долбим сразу, а отступаем.
+      nErr += 1;
+      const delay = Math.min(POLL[p] * Math.pow(2, Math.min(nErr, 5)), MAX_BACKOFF);
+      waitUntil = Date.now() + delay;
+      logErr(p, 'http:' + (e.status || 'network'), msg);
+    }
+    state[p] = { ok: false, error: msg, at: Date.now(), waitUntil: waitUntil, n429: n429, nErr: nErr };
+    // Автопочинка (0.34.0, шаг 5): сообщаем о сбое опроса. 429 — это «слишком часто»,
+    // переподключение тут только навредит, поэтому передаём статус как есть.
+    try { onPollFail({ prov: p, status: e.status || 0, nErr: nErr, error: msg }); } catch (x) {}
+  }
+  onStatus();
+}
+function startPoll(p, mode) {
+  stopPoll(p);
+  const gen = pollGen[p] = (pollGen[p] || 0) + 1;
+  let first = mode || 'missed';
+  const tick = async () => {
+    if (gen !== pollGen[p]) return;
+    if (pollBusy[p] === gen) return; // этот цикл уже опрашивает — второй запрос не нужен
+    pollBusy[p] = gen;
+    try { await poll(p, first); first = null; }
+    finally { if (pollBusy[p] === gen) pollBusy[p] = 0; }
+    if (gen !== pollGen[p]) return;
+    let wait = POLL[p];
+    const st = state[p] || {};
+    if (st.waitUntil && st.waitUntil > Date.now()) wait = Math.max(wait, st.waitUntil - Date.now());
+    // лёгкий разброс, чтобы запросы не приходили ровно в одну и ту же секунду
+    wait = Math.max(5000, Math.round(wait * (0.92 + Math.random() * 0.16)));
+    timers[p] = setTimeout(tick, wait);
+  };
+  // DonatePay не любит частые запросы: первый опрос после подключения — не раньше 15 с
+  pollRun[p] = tick;
+  timers[p] = setTimeout(tick, p === 'dp' ? 15000 : 1500);
+}
+function stopPoll(p) { pollGen[p] = (pollGen[p] || 0) + 1; if (timers[p]) clearTimeout(timers[p]); timers[p] = null; pollRun[p] = null; }
+function start() { PROVIDERS.forEach((p) => { if (secret(p)) startPoll(p, 'missed'); }); }
+// «Стримерам» выключено — донаты не опрашиваются (включат снова — start() заберёт пропущенное за сутки)
+function stop() { PROVIDERS.forEach(stopPoll); }
+
+// После сна ПК (R4): не ждать накопленную паузу ошибок — сбросить её и опросить сейчас.
+// Остановленный опрос (stop(), «войдите заново» по 401) не оживает. Если запрос уже в полёте,
+// второй параллельный не запускаем: его ответ и есть «сейчас». Возвращает число сервисов,
+// которые действительно попросили опросить.
+function pokeNow() {
+  let n = 0;
+  for (const p of PROVIDERS) {
+    if (!secret(p)) continue;   // входа нет — опрос не идёт
+    if (!pollRun[p]) continue;  // опрос остановлен
+    const st = state[p] || {};
+    if (st.waitUntil || st.nErr || st.n429) state[p] = Object.assign({}, st, { waitUntil: 0, nErr: 0, n429: 0 });
+    if (pollBusy[p] === pollGen[p]) continue; // запрос уже идёт
+    if (timers[p]) { clearTimeout(timers[p]); timers[p] = null; }
+    const run = pollRun[p];
+    try { run(); } catch (e) { log('Донаты: ' + NAMES[p] + ' — не удалось опросить сразу: ' + ((e && e.message) || e)); }
+    n++;
+  }
+  return n;
+}
+
+// Переподключить один сервис, не трогая второй (автопочинка, 0.34.0, шаг 5).
+// Возвращает false, если вход в этот сервис не настроен.
+function reconnect(p) {
+  if (PROVIDERS.indexOf(p) < 0 || !secret(p)) return false;
+  startPoll(p, 'missed');
+  log('Донаты: ' + NAMES[p] + ' — переподключаю опрос');
+  return true;
+}
+
+function status() {
+  const acc = store.get('donAccounts') || {};
+  const out = {};
+  PROVIDERS.forEach((p) => {
+    out[p] = { name: NAMES[p], connected: !!secret(p), account: acc[p] || null, ok: state[p].ok, error: state[p].error || '', at: state[p].at || 0 };
+  });
+  const daCfg = daConfig();
+  out.da.configured = !!(daCfg && (daCfg.proxyUrl || daCfg.clientSecret));
+  return out;
+}
+// Для самопроверки: своих запросов НЕ делаем (DonatePay ругается на частые) — отдаём результат опроса
+async function check() {
+  const r = {};
+  for (const p of PROVIDERS) {
+    if (!secret(p)) continue;
+    const st = state[p] || {};
+    r[p] = st.at ? { ok: !!st.ok, error: st.error || '', at: st.at, cached: true } : { ok: null, pending: true };
+  }
+  return r;
+}
+
+module.exports = { setup, start, stop, reconnect, pokeNow, status, daLogin, daCancel: () => { if (daPending) daPending.cancel(); }, setKey, disconnect, check, pollErrorAction, DA_REDIRECT, NAMES };
+

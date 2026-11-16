@@ -4,7 +4,13 @@
   <a href="https://github.com/alexshikaka/tapyor/releases/latest"><img alt="Последняя версия" src="https://img.shields.io/github/v/release/alexshikaka/tapyor?label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F"></a>
   <a href="LICENSE"><img alt="Лицензия MIT" src="https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-MIT-555"></a>
   <img alt="Windows 10 и 11" src="https://img.shields.io/badge/Windows-10%20%C2%B7%2011-555">
+  <img alt="Бета-тест" src="https://img.shields.io/badge/%D1%81%D1%82%D0%B0%D0%B4%D0%B8%D1%8F-%D0%B1%D0%B5%D1%82%D0%B0--%D1%82%D0%B5%D1%81%D1%82-orange">
 </p>
+
+> [!WARNING]
+> **Тапёр находится на стадии бета-теста.** Программа уже работает на стримах, но в ней могут быть ошибки.
+> Нашли проблему — напишите в Telegram-чат или откройте задачу в [Issues](https://github.com/alexshikaka/tapyor/issues).
+> *Tapyor is in public beta: it works on live streams, but bugs are possible.*
 
 Музыкальный плеер для Windows. Играет Яндекс Музыку, YouTube, SoundCloud, Audius и файлы с компьютера в одной
 очереди. Для стримеров принимает заказы песен из донатов (DonationAlerts, DonatePay), из чата Twitch (через

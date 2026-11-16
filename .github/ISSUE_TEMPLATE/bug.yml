@@ -1,0 +1,99 @@
+name: Ошибка в программе
+description: Что-то не работает: не ищет, не играет, падает, врёт в интерфейсе
+labels: ['ошибка']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > ⚠️ **Не вставляй токены, пароли и ключи — задача видна всем.** Это публичная страница: её читают
+        > и поисковые роботы. Всё, что попадёт в текст, останется в истории навсегда.
+        > Убери из логов и скриншотов адреса почты, ссылки с ключами и коды входа.
+
+        Спасибо, что сообщаешь. Чем точнее шаги — тем быстрее починим.
+
+        ⚠️ **Не для дыр в защите** — такие сообщения не в задачах, а закрыто: вкладка
+        **Security → Report a vulnerability** (см. `SECURITY.md`).
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия и сборка
+      description: Настройки → «О программе» → строки «Версия» и «Сборка». Скопируй как есть.
+      placeholder: '0.32.0, стабильная'
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Коммит
+      description: Там же, строка «Коммит». Если её нет — напиши «нет».
+      placeholder: 'e64728d'
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Где это
+      description: Раздел программы, в котором всё сломалось.
+      options:
+        - Поиск и воспроизведение
+        - Волна
+        - Плейлисты, история, книги
+        - Заказы и донаты
+        - Twitch-бот и оверлей (пак стримера)
+        - Оформление и оболочки
+        - Настройки, обновления
+        - Другое (напишу ниже)
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги, после которых ломается
+      description: По пунктам, с чего начал и что нажал. Если ошибка повторяется не всегда — так и напиши.
+      placeholder: |
+        1. Открыл «Поиск», ввёл «кино группа крови»
+        2. Нажал «Заказать»
+        3. Трек встал в очередь, но не играет
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что ожидал
+      placeholder: 'Трек должен был заиграть и отметиться в «Заказах»'
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Что произошло на самом деле
+      description: Текст ошибки, если он был. Скриншот можно перетащить сюда.
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Журнал (по желанию)
+      description: |
+        Настройки → «Программа» → «Открыть журнал». Скопируй последние ~100 строк перед ошибкой.
+        Журнал помогает, но не обязателен: в нём бывают названия твоих файлов — смотри, что вставляешь.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Проверь перед отправкой
+      options:
+        - label: Я поискал похожие задачи и не нашёл такую же
+          required: true
+        - label: В задаче нет моих паролей, токенов и ключей
+          required: true

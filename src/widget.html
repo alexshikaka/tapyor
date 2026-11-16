@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тапёр — лента сообщений</title>
+<!-- Стили те же, что в приложении: док выглядит один-в-один как вкладка «Заказы» -->
+<link rel="stylesheet" href="/app.css">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  html { background: var(--bg0); } /* в app.css у html цвет подвала главного окна — панели OBS он не нужен */
+  body { background: var(--bg0); color: var(--tx); font-family: Onest, sans-serif; transition: background-color .25s ease, color .25s ease; }
+  .dock { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+
+  .dock-head { transition: background-color .25s ease, border-color .25s ease; flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    border-bottom: 1px solid var(--ln2); background: var(--bg1); }
+  .dock-head b { font: 700 12.5px Onest, sans-serif; letter-spacing: .02em; color: var(--tx); }
+  .dock-head .cnt { font: 500 11.5px Onest, sans-serif; color: var(--tx4); margin-left: auto; }
+  .dock-head .tg { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .dock-head .tg span { font: 600 11px Onest, sans-serif; color: var(--tx3); }
+  .dock-head .tg .sw { width: 26px; height: 14px; border-radius: 7px; background: var(--ln3); position: relative; transition: background .15s; }
+  .dock-head .tg .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; opacity: .85; transition: transform .15s, background .15s; }
+  .dock-head .tg.on .sw { background: var(--ac); }
+  .dock-head .tg.on .sw::after { transform: translateX(12px); }
+
+  /* Лента: тот же список, что в приложении, с тем же зазором между сообщениями */
+  .dock-feed { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+    display: flex; flex-direction: column; gap: 10px; padding: 10px 10px 12px; }
+  .dock-feed::-webkit-scrollbar { width: 8px; }
+  .dock-feed::-webkit-scrollbar-thumb { background: var(--ln3); border-radius: 4px; }
+  .dock-feed::-webkit-scrollbar-track { background: transparent; }
+
+  /* Карточки сообщений — штатные .rq из приложения, только под ширину дока */
+.dock-feed .rq { padding: 10px 12px; gap: 7px; flex: 0 0 auto; height: auto; }
+  .dock-feed .rq-h { font-size: 12px; gap: 6px; }
+  .dock-feed .rq-h b { font-size: 13px; }
+  .dock-feed .rq-sm { height: 28px; padding: 0 11px; font-size: 11.5px; }
+  .dock-feed .rq-it { gap: 5px; height: auto; }
+  .dock-feed .rq-it.db > .rq-b { width: 100%; align-self: stretch; }
+
+  /* Статус связи с Тапёром: зелёный — на связи, красный — программа закрыта или недоступна */
+  .conn { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+    background: var(--hov); color: var(--tx3); font: 600 10.5px Onest, sans-serif; white-space: nowrap; }
+  .conn i { width: 6px; height: 6px; border-radius: 50%; background: var(--err, #FF5A52); box-shadow: 0 0 6px var(--err, #FF5A52); flex: 0 0 auto; }
+  .conn.on { color: var(--ok, #4ADE9A); }
+  .conn.on i { background: var(--ok, #4ADE9A); box-shadow: 0 0 6px var(--ok, #4ADE9A); }
+
+  /* ── Yami: шрифт OBS и прямые углы во всех элементах панели ── */
+  html.yami, html.yami body, html.yami button, html.yami input, html.yami .rq, html.yami .dock-head, html.yami .dock-bar {
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif !important;
+  }
+  html.yami *, html.yami *::before, html.yami *::after { border-radius: 0 !important; }
+  /* Кнопка «＋ В очередь» — яркая акцентная, как кнопка в OBS */
+  .dock-feed .pbtn.qadd { background: var(--ac, #284CB8) !important; color: #FFFFFF !important; font-weight: 700; }
+  .dock-feed .pbtn.qadd:hover { background: var(--ac2, #476BD7) !important; }
+  html.yami .dock-feed .pbtn.qadd { border-radius: 0; }
+  /* Плашка «уже в очереди» приходит с инлайновым жёлтым — перекрашиваем в цвет схемы */
+  .dock-feed .rq.doubt .rq-m { color: var(--wait, #FFD43B); }
+  .dock-feed .rq-m { overflow-wrap: anywhere; word-break: break-word; }
+  .dock-feed .rq-fl span {
+    color: var(--wait, #FFD43B) !important;
+    background: var(--wait-bg, rgba(255,212,59,.14)) !important;
+  }
+  .dock-empty { color: var(--tx4); font-size: 12px; text-align: center; padding: 18px 8px; }
+  /* Цвета палитры: суммы, статусы и полоски слева берут цвета схемы (--ok / --wait / --err) */
+  .dock-feed .rq { background: var(--card-bg, var(--bg2)); transition: background-color .25s ease, color .25s ease; }
+  .dock-feed .rq-h .amt { color: var(--ok, #4ADE9A); }
+  .dock-feed .rq-it.ex { border-color: var(--ok, #4ADE9A); }
+  .dock-feed .rq-it.db { border-color: var(--wait, #FFD43B); }
+  .dock-feed .rq-it.rj { border-color: var(--err, #FF5A52); }
+  .dock-feed .rq-it.ex .rq-lv { color: var(--ok, #4ADE9A); }
+  .dock-feed .rq-it.rj .rq-lv { color: var(--err, #FF8A84); }
+  .dock-feed .rq-empty, .dock-feed .dock-empty { color: var(--tx4); }
+
+  /* Плеер внизу */
+  .dock-bar { transition: background-color .25s ease, border-color .25s ease; flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+    border-top: 1px solid var(--ln2); background: var(--bg1); }
+  .dock-bar .np { flex: 1; min-width: 0; font-size: 11px; color: var(--tx3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dock-bar .np b { color: var(--tx2); font-weight: 600; }
+  .dock-bar .time { font: 500 10.5px ui-monospace, monospace; color: var(--tx4); font-variant-numeric: tabular-nums; }
+  .dock-bar .db { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 7px;
+    background: transparent; color: var(--tx2); cursor: pointer; padding: 0; flex: 0 0 auto; }
+  .dock-bar .db:hover { background: var(--hov); color: var(--tx); }
+  .dock-bar .db svg { width: 11px; height: 11px; fill: currentColor; }
+  .dock-bar .db.play { width: 28px; height: 28px; background: var(--tx); color: var(--bg0); border-radius: 50%; }
+  .dock-bar .db.play:hover { background: #fff; }
+  /* Фильтр ленты (15.11.2026): Все · Донаты · Твич чат · Баллы канала */
+  .dock-flt { display: flex; flex-wrap: wrap; gap: 5px; padding: 6px 10px; flex: 0 0 auto; }
+  .dock-flt button { height: 26px; padding: 0 9px; border: 1px solid var(--ln2, #333); border-radius: var(--r-ctl, 7px); background: transparent; color: var(--tx2, #bbb); font: 500 11.5px Onest, sans-serif; cursor: pointer; }
+  .dock-flt button span { color: var(--tx4, #777); }
+  .dock-flt button:hover { color: var(--tx, #fff); }
+  .dock-flt button.on { background: var(--acbg, rgba(255,255,255,.08)); border-color: var(--ac, #284CB8); color: var(--tx, #fff); }
+  .dock-feed .rq.flt-off { display: none; }
+</style>
+</head>
+<body>
+<div class="dock">
+  <div class="dock-head">
+    <b>Лента сообщений</b>
+    <span class="conn" id="conn" title="Связь с Тапёром"><i></i><span id="connText">Подключаюсь…</span></span>
+    <span class="cnt" id="cnt">—</span>
+    <label class="tg" id="exactTg" title="Точные — сразу в очередь">
+      <span>Точные</span>
+      <i class="sw"></i>
+    </label>
+  </div>
+
+  <div class="dock-flt" id="flt" role="group" aria-label="Какие сообщения показывать">
+    <button type="button" data-f="all" class="on" aria-pressed="true">Все <span></span></button>
+    <button type="button" data-f="don" aria-pressed="false">Донаты <span></span></button>
+    <button type="button" data-f="chat" aria-pressed="false">Твич чат <span></span></button>
+    <button type="button" data-f="pts" aria-pressed="false">Баллы канала <span></span></button>
+  </div>
+
+  <div class="dock-feed" id="feed"><div class="dock-empty">Подключаюсь к Тапёру…</div></div>
+
+  <div class="dock-bar">
+    <button class="db" data-cmd="prev" title="Назад" aria-label="Назад">
+      <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14l-10-7z"/></svg>
+    </button>
+    <button class="db play" id="pp" data-cmd="playpause" title="Пауза / играть" aria-label="Пауза / играть">
+      <svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg>
+    </button>
+    <button class="db" data-cmd="next" title="Следующий" aria-label="Следующий">
+      <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l10-7z"/></svg>
+    </button>
+    <span class="np" id="np">ничего не играет</span>
+    <span class="time" id="tm">0:00</span>
+    <button class="db" data-cmd="search" title="Поиск в Тапёре" aria-label="Поиск в Тапёре">
+      <svg viewBox="0 0 24 24"><path d="M10 3a7 7 0 105.2 11.9l4.4 4.4 1.4-1.4-4.4-4.4A7 7 0 0010 3zm0 2a5 5 0 110 10 5 5 0 010-10z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script src="/widget.js"></script>
+</body>
+</html>

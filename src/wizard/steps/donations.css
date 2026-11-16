@@ -1,0 +1,14 @@
+/* Шаг визарда «Донаты» (WC2). Только переменные темы — их присылает главное окно.
+   Своих кнопок и полей у шага больше нет: задачи рисует WIZARD.coach (.wiz-tasks из wizard.css),
+   а подсвечиваются настоящие кнопки и поля в Настройках → «Донаты». */
+#wzDonTasks { display: flex; flex-direction: column; gap: 8px; }
+.wz4-note { margin: 0; color: var(--tx3); font-size: 12px; line-height: 1.4; }
+.wz4-msg {
+  padding: 8px 10px;
+  border-radius: var(--r-ctl);
+  background: color-mix(in srgb, var(--pri) 18%, var(--bg3));
+  color: var(--tx);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.wz4-msg[hidden] { display: none; }

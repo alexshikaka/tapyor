@@ -20,7 +20,7 @@
 | Настройки и их проверка (до 10 песен, 6 углов, сдвиг, размер 80–150 %, цвет…) | `…/overlay/src/settings.js` | там |
 | Что уходит странице (трек + «дальше» с добором из волны) | `…/overlay/src/feed.js` | там |
 | Сама страница DOS | `…/overlay/page/playlist.html`, `.css`, `.js`; раскладка без DOM — `page/dos.js` | там |
-| Мост: страницы модулей на сервере, плеер для модулей, `mod-cmd` | `src/modhost.js` (`http`, `playerFor`, `mod-cmd`, `mod-player`, `mod-level`) | да |
+| Мост ядра для модулей: страницы на сервере, плеер, `mod-cmd`, пульт с телефона (`core.remote`) | `src/modhost.js` (`http`, `playerFor`, `mod-cmd`, `mod-player`, `mod-level`, `core.remote`), `src/main/remote-bridge.js` | да |
 | Сервер: префиксы модулей (только GET), обложка своего файла | `src/main.js` → `modMounts`, `modhost.setup({ mount, unmount, pageUrl, localCover })` | да |
 | Снимок плеера и уровень звука из окна | `src/ui/25-overlay.js` → `ovSnap`, `ovFeed`, `ovLevels`; уровень — `vizOvLevel` в `src/ui/17-viz.js` | да |
 | Окно настроек и превью | `src/ui/25-overlay.js` (вторая половина), разметка `#sOverlay`/`#goOverlay` в `src/index.html`, стили `.ov-*` в `src/app.css` | да |

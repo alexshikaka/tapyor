@@ -1,0 +1,39 @@
+/* Шаг «Музыка с компьютера»: сводка папок и прогресс чтения. Кнопок шаг не рисует —
+   он подсвечивает настоящую кнопку «Добавить папку…» в Настройках. Цвета — переменные темы. */
+.wiz-lc-status { display: flex; flex-direction: column; gap: 10px; }
+.wiz-lc-strong {
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--acbg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.wiz-lc-strong b { color: var(--ac); }
+.wiz-lc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--r-card);
+  background: var(--bg3);
+}
+.wiz-lc-l { font-size: 12px; color: var(--tx3); }
+.wiz-lc-path {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--ln3);
+  border-radius: var(--r-ctl);
+  background: var(--bg1);
+  font-size: 13px;
+  word-break: break-all;
+}
+.wiz-lc-bar { height: 6px; border-radius: 3px; background: var(--bg4); overflow: hidden; }
+.wiz-lc-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ac); transition: width .2s; }
+.wiz-lc-prog { font-size: 12px; color: var(--tx3); }
+.wiz-lc-note { margin: 0; font-size: 12px; line-height: 1.45; color: var(--tx3); }
+
+@media (prefers-reduced-motion: reduce) {
+  .wiz-lc-bar i { transition: none; }
+}

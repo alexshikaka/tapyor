@@ -1,0 +1,14 @@
+# Переводы строк: в репозитории всё хранится с LF, в рабочей папке — как положит Windows.
+# Без этого файла 105 файлов постоянно числились изменёнными (в папке CRLF, в гите LF).
+* text=auto
+
+# Пакетные файлы Windows — всегда CRLF, иначе cmd.exe может споткнуться
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Двоичное — не трогать
+*.woff2 binary
+*.png binary
+*.ico binary
+*.exe binary
+*.bundle binary

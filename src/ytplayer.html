@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<!-- Страница плеера YouTube (P5c №1). Она живёт на http://localhost:<порт> — другом origin,
+     чем окно Тапёра на 127.0.0.1, и без preload. Своего моста к главному процессу здесь нет.
+     Скрипты: только свои и сам iframe_api; без unsafe-inline и unsafe-eval.
+     frame-ancestors в <meta> браузер игнорирует — точный запрет встраивания ставит
+     локальный сервер заголовком (src/main/local-server.js). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self'; img-src https://i.ytimg.com https://s.ytimg.com data:; font-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src https://www.youtube.com https://s.ytimg.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>Плеер YouTube</title>
+<link rel="stylesheet" href="ytplayer.css">
+</head>
+<body>
+<div id="yt"></div>
+<script src="yt-msg.js"></script>
+<script src="ytplayer.js"></script>
+</body>
+</html>

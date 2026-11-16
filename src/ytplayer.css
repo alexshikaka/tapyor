@@ -1,0 +1,4 @@
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+#yt { position: relative; width: 100%; height: 100%; }
+/* iframe_api ставит размеры атрибутами; CSS важнее — кадр заполняет окно при любом раскладе. */
+#yt iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }

@@ -1,0 +1,156 @@
+/* Вторая док-панель OBS — «Пульт плейлиста» (docs/DOCK2.md).
+   Стили только на переменных темы: оболочки и темы Тапёра красят пульт сами. */
+html, body { height: 100%; margin: 0; overflow: hidden; }
+html { background: var(--bg0); } /* в app.css у html цвет подвала главного окна — пульту он не нужен */
+body { background: var(--bg0); color: var(--tx); transition: background-color .25s ease, color .25s ease; }
+.d2 { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+
+/* ── Верх: поиск и связь ─────────────────────────────────────────────────── */
+/* Высота шапки и подвала — как у панели с сообщениями (widget.html): шапка 34 px, подвал 43 px */
+.d2-head { position: relative; flex: 0 0 auto; padding: 4px 12px; display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg1); border-bottom: 1px solid var(--ln2); transition: background-color .25s ease, border-color .25s ease; }
+.d2-search { display: flex; align-items: center; gap: 8px; }
+.d2-search input { flex: 1; min-width: 0; height: 25px; padding: 0 10px; border: 1px solid var(--ln2);
+  border-radius: var(--r-ctl); background: var(--bg2); color: var(--tx); font: inherit; font-size: 12.5px; outline: none; }
+.d2-search input:focus { border-color: var(--ac); }
+.d2-search input::placeholder { color: var(--tx4); }
+
+/* Статус связи: зелёный — на связи, красный — программа закрыта или недоступна (как у первой панели) */
+.conn { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+  background: var(--hov); color: var(--tx3); font: inherit; font-size: 10.5px; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
+.conn i { width: 6px; height: 6px; border-radius: 50%; background: var(--err, #FF5A52); box-shadow: 0 0 6px var(--err, #FF5A52); flex: 0 0 auto; }
+.conn.on { color: var(--ok); }
+.conn.on i { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+
+/* ── Выдача поиска ──────────────────────────────────────────────────────── */
+.d2-find { position: absolute; left: 10px; right: 10px; top: calc(100% - 2px); z-index: 10;
+  max-height: 60vh; overflow-y: auto; background: var(--bg2); border: 1px solid var(--ln2);
+  border-radius: var(--r-card); }
+.d2-fr { display: flex; align-items: center; gap: 6px; padding: 5px 7px; cursor: pointer; border-bottom: 1px solid var(--ln2); }
+.d2-fr:last-child { border-bottom: 0; }
+.d2-fr:hover, .d2-fr.act { background: var(--hov); }
+.d2-fr .d2-cov { width: 28px; height: 28px; }
+.d2-fm { flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; } /* длинное название не наезжает на кнопки */
+.d2-ft { display: block; font-size: 11.5px; color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d2-fs { display: block; font-size: 10px; color: var(--tx4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d2-fp, .d2-fa { border: 0; border-radius: 6px; background: var(--hov); color: var(--tx2); cursor: pointer; font: inherit; flex: 0 0 auto; }
+.d2-fp { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+.d2-fp svg { width: 11px; height: 11px; fill: currentColor; }
+.d2-fa { height: 24px; padding: 0 7px; font-size: 10px; white-space: nowrap; }
+.d2-fp:hover, .d2-fa:hover { background: var(--acbg); color: var(--tx); }
+
+/* ── Режим очереди и счётчик ────────────────────────────────────────────── */
+.d2-mode { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  background: var(--bg1); border-bottom: 1px solid var(--ln2); }
+.d2-seg { display: flex; flex: 1; min-width: 0; gap: 4px; padding: 2px; background: var(--bg2);
+  border: 1px solid var(--ln2); border-radius: var(--r-ctl); }
+.d2-seg button { flex: 1; min-width: 0; height: 24px; border: 0; border-radius: 6px; background: transparent;
+  color: var(--tx3); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 5px; }
+.d2-seg button.on { background: var(--acbg); color: var(--tx); }
+.d2-count { flex: 0 0 auto; font: 500 11px ui-monospace, monospace; color: var(--tx3); font-variant-numeric: tabular-nums; }
+
+/* ── Карточка волны ─────────────────────────────────────────────────────── */
+.d2-wave { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  background: var(--bg0); border-bottom: 1px solid var(--ln2); }
+.d2-wave-main { flex: 1; min-width: 0; }
+.d2-wave-t { font-size: 12px; font-weight: 600; color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d2-wave-s { font-size: 10.5px; color: var(--tx4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d2-wave-play { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; height: 26px; padding: 0 8px;
+  border: 1px solid var(--ln2); border-radius: var(--r-ctl); background: var(--hov); color: var(--tx2);
+  font: inherit; font-size: 11px; cursor: pointer; }
+.d2-wave-play:hover { color: var(--tx); border-color: var(--ln3); }
+.d2-wave-play svg { width: 10px; height: 10px; fill: currentColor; }
+.d2-tg { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; height: 26px; padding: 0 7px;
+  border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--tx3); font: inherit; font-size: 10.5px; cursor: pointer; }
+.d2-tg .sw { width: 26px; height: 14px; border-radius: 7px; background: var(--ln3); position: relative; transition: background .15s; }
+.d2-tg .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg0); opacity: .9; transition: transform .15s; }
+.d2-tg.on .sw { background: var(--ac); }
+.d2-tg.on .sw::after { transform: translateX(12px); }
+.d2-tg.on { color: var(--tx); }
+
+/* ── Очередь ────────────────────────────────────────────────────────────── */
+.d2-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.d2-scroll::-webkit-scrollbar { width: 8px; }
+.d2-scroll::-webkit-scrollbar-thumb { background: var(--ln3); border-radius: 4px; }
+.d2-list { display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+.d2-scroll::-webkit-scrollbar-track { background: transparent; }
+
+.d2-row { display: flex; align-items: center; gap: 7px; padding: 4px 5px; flex: 0 0 auto;
+  border: 1px solid transparent; border-radius: var(--r-ctl); background: var(--bg2); position: relative; }
+.d2-row:hover { background: var(--hov); }
+.d2-row.playing { border-color: var(--ac); }
+.d2-row.done { opacity: .55; }
+.d2-row.bg { background: var(--bg1); }
+.d2-row.req { border-left: 3px solid var(--req); }
+.d2-row.req-cmd { border-left-color: var(--req-cmd); }
+.d2-row.req-pts { border-left-color: var(--req-pts); }
+.d2-row.req .d2-title, .d2-row.req .d2-sub { color: var(--req); }
+.d2-row.req-cmd .d2-title, .d2-row.req-cmd .d2-sub { color: var(--req-cmd); }
+.d2-row.req-pts .d2-title, .d2-row.req-pts .d2-sub { color: var(--req-pts); }
+.d2-row.dragging { opacity: .45; }
+.d2-row.drop-before { box-shadow: 0 -2px 0 var(--ac); }
+.d2-row.drop-after { box-shadow: 0 2px 0 var(--ac); }
+
+.d2-cov { width: 34px; height: 34px; flex: 0 0 auto; border-radius: 5px; overflow: hidden;
+  background: var(--bg3); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.d2-cov img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.d2-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.d2-title { font-size: 12px; color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.d2-sub { font-size: 10.5px; color: var(--tx4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d2-who { display: block; font-size: 10.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--req); }
+.d2-row.req-cmd .d2-who { color: var(--req-cmd); }
+.d2-row.req-pts .d2-who { color: var(--req-pts); }
+.d2-acts { flex: 0 0 auto; display: flex; align-items: center; gap: 1px; }
+.d2-acts button { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 6px; background: transparent; color: var(--tx3); cursor: pointer; padding: 0; flex: 0 0 auto; }
+.d2-acts button:hover { background: var(--hov); color: var(--tx); }
+.d2-acts button svg { width: 12px; height: 12px; }
+.d2-nx { opacity: 0; transition: opacity .12s; }
+.d2-row:hover .d2-nx, .d2-row:focus-within .d2-nx { opacity: 1; }
+.d2-ban { color: var(--tx3); }
+.d2-x { opacity: .8; }
+.d2-dur { flex: 0 0 auto; min-width: 28px; text-align: right; font: 500 10.5px ui-monospace, monospace;
+  color: var(--tx4); font-variant-numeric: tabular-nums; }
+
+/* Книга — один блок: название первой главы и число глав, действия по первой главе */
+.d2-row.d2-book { background: var(--bg3); border-left: 3px solid var(--ln3); }
+.d2-book-badge { flex: 0 0 auto; font-size: 10px; color: var(--tx3); background: var(--hov); padding: 1px 5px; border-radius: 999px; white-space: nowrap; }
+.d2-empty { color: var(--tx4); font-size: 12px; text-align: center; padding: 18px 8px; }
+
+/* ── «Дальше в волне» ───────────────────────────────────────────────────── */
+.d2-after { padding: 2px 12px 8px; }
+.d2-after-t { font-size: 10px; color: var(--tx4); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+.d2-ar { display: flex; align-items: center; gap: 6px; padding: 2px 4px; opacity: .7; cursor: pointer; border-radius: var(--r-ctl); }
+.d2-ar:hover { opacity: 1; background: var(--hov); }
+.d2-ar .d2-cov { width: 22px; height: 22px; border-radius: 4px; }
+.d2-ar img { width: 22px; height: 22px; border-radius: 4px; object-fit: cover; flex: 0 0 auto; }
+.d2-arm { min-width: 0; }
+.d2-art { font-size: 11px; color: var(--tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d2-ars { font-size: 10px; color: var(--tx4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Подвал ─────────────────────────────────────────────────────────────── */
+.d2-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+  background: var(--bg1); border-top: 1px solid var(--ln2); transition: background-color .25s ease, border-color .25s ease; }
+.d2-db { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 7px; background: transparent; color: var(--tx2); cursor: pointer; padding: 0; flex: 0 0 auto; }
+.d2-db:hover { background: var(--hov); color: var(--tx); }
+.d2-db svg { width: 11px; height: 11px; fill: currentColor; }
+.d2-db.play { width: 28px; height: 28px; background: var(--tx); color: var(--bg0); border-radius: 50%; }
+.d2-db.play:hover { background: var(--tx); color: var(--bg0); opacity: .85; }
+.d2-np { flex: 1; min-width: 0; font-size: 11px; color: var(--tx3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d2-np b { color: var(--tx2); font-weight: 600; }
+.d2-time { flex: 0 0 auto; font: 500 10.5px ui-monospace, monospace; color: var(--tx4); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.d2-logo { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer; flex: 0 0 auto; }
+.d2-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.d2-logo:hover { background: var(--hov); }
+
+/* ── Yami: шрифт OBS и прямые углы во всех элементах пульта ── */
+html.yami, html.yami body, html.yami button, html.yami input, html.yami .d2-head, html.yami .d2-bar {
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif !important;
+}
+html.yami *, html.yami *::before, html.yami *::after { border-radius: 0 !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

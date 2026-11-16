@@ -1,0 +1,26 @@
+/* Шаг визарда «Заказы в деле» (WZ4). Только переменные темы — их присылает главное окно. */
+.wz4-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--ln2);
+  border-radius: var(--r-card);
+  background: var(--bg3);
+}
+.wz4-card[hidden] { display: none; }
+.wz4-sub { color: var(--tx3); font-size: 12px; line-height: 1.4; }
+.wz4-note { margin: 0; color: var(--tx3); font-size: 12px; line-height: 1.45; }
+.wz4-ord-status { color: var(--tx2); }
+.wz4-ord-status[hidden], .wz4-ord-manual[hidden] { display: none; }
+.wz4-ord-manual { color: var(--tx2); }
+.wz4-ord-go {
+  background: color-mix(in srgb, var(--ac) 14%, var(--bg3));
+  border-color: color-mix(in srgb, var(--ac) 45%, var(--ln2));
+}
+.wz4-ord-wait { border-color: var(--pri); }
+.wz4-ord-neutral { border-color: var(--ln2); }
+.wz4-ord-title { font-size: 12px; font-weight: 700; color: var(--tx); }
+.wz4-ord-go .wz4-ord-title { color: var(--ac); }
+.wz4-ord-text { font-size: 13px; line-height: 1.45; color: var(--tx2); }
+.wz4-ord-strong { margin-top: 4px; font-size: 14px; font-weight: 600; color: var(--tx); }

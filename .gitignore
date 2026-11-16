@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+resources/*
+!resources/streamerbot/
+!resources/yt-dlp.version.json
+src/google-oauth.json
+src/da.json
+src/yoomoney.json
+src/github-oauth.json
+src/ui.js
+tools/reliability/soak-result.json
+tools/reliability/long-run-result.jsonl
+# рабочая папка Claude: выгрузки и архивы для разбора (в репозиторий не нужно)
+Claude outputs/

@@ -1,0 +1,19 @@
+{
+  "ui/00-core.js": 0,
+  "ui/02-player.js": 7,
+  "ui/03-queue.js": 1,
+  "ui/04-wave.js": 15,
+  "ui/05-search.js": 2,
+  "ui/07-results.js": 2,
+  "ui/08-artist.js": 6,
+  "ui/09-taplists.js": 0,
+  "ui/10-requests.js": 1,
+  "ui/11-local.js": 0,
+  "ui/12-playlists.js": 31,
+  "ui/14-settings.js": 60,
+  "ui/15-hotkeys.js": 3,
+  "ui/16-account.js": 8,
+  "ui/17-viz.js": 0,
+  "app.css (общие правила)": 141,
+  "index.html (style=\"…\")": 14
+}

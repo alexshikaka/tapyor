@@ -1,0 +1,18 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Telegram — чат (вопросы и ошибки)
+    url: https://t.me/tapyorchat
+    about: Задать вопрос, рассказать об ошибке и просто поговорить — в чате. Новости и версии — в канале t.me/tapyor.
+
+  - name: Telegram — канал (новости и версии)
+    url: https://t.me/tapyor
+    about: Сообщения о новых версиях и важных изменениях.
+
+  - name: Дыра в защите
+    url: https://github.com/alexshikaka/tapyor/security/advisories/new
+    about: Не создавай задачу — сообщи закрытым сообщением (Security → Report a vulnerability). Подробности в SECURITY.md.
+
+  - name: Как собрать из исходников
+    url: https://github.com/alexshikaka/tapyor/blob/main/docs/DEV.md
+    about: Запуск, сборка установщика, проверки — docs/DEV.md.

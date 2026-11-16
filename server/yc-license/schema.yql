@@ -1,0 +1,6 @@
+-- Схема базы сервера активации Тапёра (YDB serverless). Выполнить один раз: консоль → YDB → база → «Навигация» → «Новый SQL-запрос».
+CREATE TABLE `keys` (kh Utf8, ed Uint32, st Utf8, note Utf8, created Uint64, PRIMARY KEY (kh));
+CREATE TABLE `machines` (kh Utf8, mid Utf8, f1 Utf8, f2 Utf8, f3 Utf8, at Uint64, PRIMARY KEY (kh, mid));
+CREATE TABLE `trials` (id Utf8, pack Utf8, f1 Utf8, f2 Utf8, f3 Utf8, ed Uint32, iat Uint64, exp Uint64, PRIMARY KEY (id));
+-- счётчик попыток: записи старше 2 часов база удаляет сама
+CREATE TABLE `hits` (k Utf8, n Uint32, at Timestamp, PRIMARY KEY (k)) WITH (TTL = Interval("PT2H") ON at);

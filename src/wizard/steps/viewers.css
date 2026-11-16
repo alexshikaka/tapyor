@@ -1,0 +1,46 @@
+/* Шаг «Взаимодействие со зрителями» (16.11.2026, макет «вариант A»): две карточки-выбора.
+   Пак — шире и с акцентом, внутри сцена эфира (чат слева, оверлей справа вверху); Streamer.bot — скриншот.
+   Цвета интерфейса — переменные темы; «картинка эфира» — внутри кадров (src/wizard/img). */
+.wiz-vw { display: flex; flex-direction: column; gap: 12px; }
+.wiz-vw-choices { display: grid; grid-template-columns: 1.55fr 1fr; gap: 14px; align-items: stretch; }
+@media (max-width: 620px) { .wiz-vw-choices { grid-template-columns: 1fr; } }
+.wiz-vw-choice { display: flex; flex-direction: column; align-items: stretch; gap: 6px; text-align: left; padding: 16px;
+  border-radius: var(--r-panel, 14px); font: inherit; cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
+.wiz-vw-choice:active { transform: translateY(1px); }
+.wiz-vw-choice b { font-size: 24px; line-height: 1.1; font-weight: 800; }
+.wiz-vw-k { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.wiz-vw-what { font-size: 16px; font-weight: 700; }
+.wiz-vw-sub { font-size: 12.5px; line-height: 1.45; }
+.wiz-vw-cta { margin-top: auto; display: flex; align-items: center; justify-content: center; min-height: 42px; border-radius: var(--r-ctl, 8px); font-weight: 700; font-size: 14.5px; }
+
+/* Пак — главный выбор */
+.wiz-vw-pack { background: var(--acbg); border: 2px solid var(--ac); color: var(--tx); }
+.wiz-vw-pack:hover { background: color-mix(in srgb, var(--ac) 22%, var(--bg2)); }
+.wiz-vw-pack .wiz-vw-k { color: var(--ac2); }
+.wiz-vw-pack .wiz-vw-sub { color: var(--tx2); }
+.wiz-vw-pack .wiz-vw-cta { background: var(--pri); color: var(--prit); }
+
+/* Streamer.bot — запасной путь */
+.wiz-vw-sb { background: var(--bg3); border: 1px solid var(--ln3); color: var(--tx); }
+.wiz-vw-sb:hover { border-color: var(--ac); }
+.wiz-vw-sb .wiz-vw-k, .wiz-vw-sb .wiz-vw-sub { color: var(--tx3); }
+.wiz-vw-sb .wiz-vw-cta { border: 1px solid var(--ln3); color: var(--tx); }
+.wiz-vw-shot { display: block; width: 100%; border-radius: 10px; border: 1px solid var(--ln2); }
+
+/* Сцена эфира внутри карточки пака: оверлей сменяется, чат Twitch слева внизу */
+.wiz-vw-stage { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--ln2); background: var(--bg00); }
+.wiz-vw-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .6s ease; }
+.wiz-vw-stage img.on { opacity: 1; }
+.wiz-vw-chat { position: absolute; left: 8px; bottom: 8px; top: 34px; width: 44%; display: flex; flex-direction: column; justify-content: flex-end; gap: 5px;
+  padding: 8px 9px; border-radius: 8px; background: color-mix(in srgb, var(--bg00) 82%, transparent); font-size: 11px; line-height: 1.35; color: var(--tx2); }
+.wiz-vw-chat-h { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--tx4); margin-bottom: auto; }
+.wiz-vw-chat p { margin: 0; }
+.wiz-vw-chat .u1 { color: var(--ok); font-weight: 700; }
+.wiz-vw-chat .u2 { color: var(--warn); font-weight: 700; }
+.wiz-vw-chat .bot { color: var(--ac2); font-weight: 700; }
+.wiz-vw-chat .cmd { color: var(--tx); font-weight: 600; }
+.wiz-vw-dots { display: flex; gap: 5px; justify-content: center; }
+.wiz-vw-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--ln3); transition: background .3s; }
+.wiz-vw-dots i.on { background: var(--ac); }
+@media (prefers-reduced-motion: reduce) { .wiz-vw-stage img, .wiz-vw-dots i { transition: none; } }

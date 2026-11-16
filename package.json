@@ -1,0 +1,98 @@
+{
+  "name": "tapyor",
+  "version": "0.38.1",
+  "description": "Тапёр — музыка и заказы для стрима из нескольких сервисов",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "ui": "node tools/build-ui.mjs",
+    "fonts": "node tools/fetch-fonts.mjs",
+    "dist": "node tools/build-ui.mjs && electron-builder --publish always",
+    "audit:skins": "node tests/skins/audit.js",
+    "test": "node tools/check.mjs",
+    "lint": "node tools/build-ui.mjs && node tools/lint.mjs",
+    "test:unit": "node tools/build-ui.mjs && node --test tests/unit/*.test.mjs",
+    "reliability:fault": "node tools/reliability/fault.mjs",
+    "reliability:soak": "node tools/reliability/soak.mjs --hours 2",
+    "reliability:long": "node tools/reliability/long-run.mjs",
+    "reliability:smoke": "node tools/reliability/live-smoke.mjs"
+  },
+  "author": "shikaka",
+  "license": "MIT",
+  "devDependencies": {
+    "@electron/asar": "3.4.1",
+    "electron": "44.11.3",
+    "electron-builder": "25.1.8",
+    "eslint": "^10.14.0",
+    "globals": "^17.13.0",
+    "ws": "^8.22.2"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11",
+    "qrcode-svg": "1.1.0",
+    "yt-search": "^2.10.4"
+  },
+  "overrides": {
+    "redstar": {
+      "minimatch": "3.1.5"
+    }
+  },
+  "build": {
+    "appId": "app.alexshikaka.tapyor",
+    "productName": "Тапёр",
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Тапёр"
+    },
+    "extraResources": [
+      {
+        "from": "resources/yt-dlp.exe",
+        "to": "yt-dlp.exe"
+      },
+      {
+        "from": "src/lastfm.json",
+        "to": "lastfm.json"
+      },
+      {
+        "from": "resources/streamerbot/tapyor-template.txt",
+        "to": "streamerbot/tapyor-template.txt"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "alexshikaka",
+        "repo": "tapyor-releases",
+        "releaseType": "release"
+      }
+    ],
+    "artifactName": "Tapyor-Setup-${version}.${ext}",
+    "files": [
+      "**/*",
+      "!docs${/*}",
+      "!tests${/*}",
+      "!tools${/*}",
+      "!server${/*}",
+      "!public${/*}",
+      "!.github${/*}",
+      "!dist${/*}",
+      "!**/*.md",
+      "!*.cmd",
+      "!*.mjs",
+      "!.cursorrules",
+      "!src/lastfm.json",
+      "!package-lock.json",
+      "!modules${/*}",
+      "!resources${/*}",
+      "!resources/streamerbot${/*}"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alexshikaka/tapyor.git"
+  }
+}

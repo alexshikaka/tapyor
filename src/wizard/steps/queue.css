@@ -1,0 +1,15 @@
+/* Шаг «Очередь» (WZ3): карточки-объяснения. Цвета — только переменные темы. */
+.wiz-qcard {
+  padding: 14px 16px;
+  border-radius: var(--r-card);
+  background: var(--bg3);
+}
+.wiz-qcard b { display: block; font-size: 14px; }
+.wiz-qcard span {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--tx3);
+}
+.wiz-qcard[hidden] { display: none; }

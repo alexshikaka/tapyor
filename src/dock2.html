@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тапёр — пульт плейлиста</title>
+<!-- Стили те же, что в приложении: пульт выглядит один-в-один с очередью -->
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/dock2.css">
+</head>
+<body>
+<div class="d2">
+  <div class="d2-head">
+    <div class="d2-search">
+      <input id="d2q" type="search" placeholder="Поиск трека…" autocomplete="off" spellcheck="false" aria-label="Поиск трека">
+      <span class="conn" id="d2conn" title="Связь с Тапёром"><i></i><span id="d2connText">Подключаюсь…</span></span>
+    </div>
+    <div class="d2-find" id="d2find" hidden></div>
+  </div>
+
+  <!-- Плейлист и «Дальше в волне» листаются вместе, как очередь в окне Тапёра -->
+  <div class="d2-scroll" id="d2scroll">
+    <div class="d2-list" id="d2list"><div class="d2-empty">Подключаюсь к Тапёру…</div></div>
+    <div class="d2-after" id="d2after" hidden></div>
+  </div>
+
+  <div class="d2-bar">
+    <button type="button" class="d2-db" data-cmd="prev" title="Назад" aria-label="Назад">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14l-10-7z"></path></svg>
+    </button>
+    <button type="button" class="d2-db play" id="d2pp" data-cmd="playpause" title="Пауза / играть" aria-label="Пауза / играть">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l12 7-12 7z"></path></svg>
+    </button>
+    <button type="button" class="d2-db" data-cmd="next" title="Следующий" aria-label="Следующий">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l10-7z"></path></svg>
+    </button>
+    <span class="d2-np" id="d2np">ничего не играет</span>
+    <span class="d2-time" id="d2time">0:00</span>
+    <button type="button" class="d2-logo" id="d2logo" title="Открыть Тапёр" aria-label="Открыть Тапёр">
+      <img src="/assets/icon.png" alt="">
+    </button>
+  </div>
+</div>
+
+<script src="/dock2.js"></script>
+</body>
+</html>

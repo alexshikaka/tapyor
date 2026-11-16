@@ -1,0 +1,68 @@
+/* Шаг визарда «Правила заказов» (WZ4). Только переменные темы — их присылает главное окно. */
+.wz4-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--ln2);
+  border-radius: var(--r-card);
+  background: var(--bg3);
+}
+.wz4-sub { color: var(--tx3); font-size: 12px; line-height: 1.4; }
+.wz4-note { margin: 0; color: var(--tx3); font-size: 12px; line-height: 1.4; }
+#wzRulesTasks { display: flex; flex-direction: column; gap: 8px; }
+.wz4-msg {
+  padding: 8px 10px;
+  border-radius: var(--r-ctl);
+  background: color-mix(in srgb, var(--pri) 18%, var(--bg3));
+  color: var(--tx);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.wz4-msg[hidden] { display: none; }
+
+.wz4-flow-top { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.wz4-chip {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--bg4);
+  color: var(--tx);
+  font-size: 12px;
+  font-weight: 600;
+}
+.wz4-paths { display: flex; gap: 8px; }
+.wz4-path {
+  flex: 1 1 0;
+  padding: 8px;
+  border-radius: 8px;
+  color: var(--tx2);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.wz4-path b { display: block; margin-bottom: 3px; font-size: 12px; }
+.wz4-path-go { background: color-mix(in srgb, var(--ac) 16%, var(--bg3)); }
+.wz4-path-go b { color: var(--ac); }
+.wz4-path-wait { background: color-mix(in srgb, var(--pri) 20%, var(--bg3)); }
+.wz4-path-wait b { color: var(--tx); }
+
+.wz4-preset {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid transparent;
+  border-radius: var(--r-ctl);
+  background: var(--bg3);
+  color: var(--tx);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wz4-preset:hover { border-color: var(--ln3); }
+.wz4-preset.on { border-color: var(--ac); background: var(--bg4); }
+.wz4-preset b { display: block; font-size: 14px; }
+.wz4-preset span { display: block; margin-top: 3px; color: var(--tx3); font-size: 12px; line-height: 1.4; }
+.wz4-preset .wz4-pre-mark { display: inline; color: var(--ac); }
+.wz4-manual[hidden] { display: none; }
+
+/* 15.11.2026: вместо списка задач — одна строка о результате набора */
+.wz4-done { margin: 4px 0 0; padding: 10px 12px; border-radius: var(--r-ctl, 8px); background: var(--acbg); color: var(--tx); font-size: 13px; line-height: 1.45; }

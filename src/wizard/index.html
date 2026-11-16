@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'">
+<title>Знакомство — Тапёр</title>
+<link rel="stylesheet" href="wizard.css">
+<!-- Стили шагов: по одной строке на файл src/wizard/steps/<id>.css -->
+<link rel="stylesheet" href="steps/look.css">
+<link rel="stylesheet" href="steps/logins.css">
+<link rel="stylesheet" href="steps/local.css">
+<link rel="stylesheet" href="steps/search.css">
+<link rel="stylesheet" href="steps/playlists.css">
+<link rel="stylesheet" href="steps/donations.css">
+<link rel="stylesheet" href="steps/rules.css">
+<link rel="stylesheet" href="steps/orders.css">
+<link rel="stylesheet" href="steps/obs.css">
+<link rel="stylesheet" href="steps/queue.css">
+<link rel="stylesheet" href="steps/livehelp.css">
+<link rel="stylesheet" href="steps/viewers.css">
+</head>
+<body>
+<div class="wiz">
+  <div class="wiz-head" id="wizHead">
+    <span id="wizStep"></span>
+    <button class="wiz-close" id="wizClose" type="button" aria-label="Закрыть знакомство" title="Закрыть">✕</button>
+  </div>
+  <div class="wiz-top">
+    <h1 id="wizTitle"></h1>
+    <p id="wizLead"></p>
+  </div>
+  <main class="wiz-body" id="wizBody"></main>
+  <footer class="wiz-foot" id="wizFoot">
+    <button class="wiz-back" id="wizBack" type="button" hidden>← Назад</button>
+    <button class="wiz-skip" id="wizSkip" type="button">Пропустить</button>
+    <span class="wiz-grow"></span>
+    <button class="wiz-next" id="wizNext" type="button">Дальше</button>
+  </footer>
+</div>
+<script src="steps.js"></script>
+<!-- Шаги: по одной строке на файл src/wizard/steps/<id>.js -->
+<script src="steps/look.js"></script>
+<script src="steps/logins.js"></script>
+<script src="steps/local.js"></script>
+<script src="steps/search.js"></script>
+<script src="steps/playlists.js"></script>
+<script src="steps/donations.js"></script>
+<script src="steps/rules.js"></script>
+<script src="steps/orders.js"></script>
+<script src="steps/obs.js"></script>
+<script src="steps/queue.js"></script>
+<script src="steps/livehelp.js"></script>
+<script src="steps/viewers.js"></script>
+<script src="wizard.js"></script>
+</body>
+</html>

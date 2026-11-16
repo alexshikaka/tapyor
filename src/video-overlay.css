@@ -1,0 +1,38 @@
+/* VO1: страница /video для источника «Браузер» в OBS.
+   Фон всегда прозрачный; рамка и скругление — на обёртке, видео занимает весь кадр 16:9. */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+#voFrame {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  border: 0 solid transparent;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: opacity .4s ease, border-color .3s ease;
+}
+
+body.vo-hidden #voFrame { opacity: 0; }
+
+#voFrame video,
+#voFrame iframe,
+#voFrame img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#voFrame video { object-fit: cover; background: transparent; }
+#voFrame iframe { border: 0; background: transparent; }
+#voFrame img { object-fit: contain; background: transparent; }
+
+#voFrame [hidden] { display: none; }
