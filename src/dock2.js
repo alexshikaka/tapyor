@@ -208,11 +208,38 @@
     if (key === lastCenteredKey) return;   // тот же трек — не дёргаем список
     lastCenteredKey = key;
     var box = scrollEl || listEl;
-    var lr = box.getBoundingClientRect();
-    var ar = row.getBoundingClientRect();
-    var delta = (ar.top + ar.height / 2) - (lr.top + lr.height / 2);
-    var max = Math.max(0, box.scrollHeight - box.clientHeight);
-    box.scrollTop = Math.max(0, Math.min(max, box.scrollTop + delta));
+    // Меряем после перерасчёта вёрстки и по offsetTop: сразу после innerHTML высоты строк
+    // не окончательные, и центрирование промахивалось (поймано приёмкой 24.11.2026).
+    var run = function () {
+      var el = listEl.querySelector('.d2-row.playing');
+      if (!el) return;
+      var rowTop = 0;
+      var node = el;
+      while (node && node !== box) { rowTop += node.offsetTop || 0; node = node.offsetParent; }
+      var max = Math.max(0, box.scrollHeight - box.clientHeight);
+      if (node !== box) {
+        // цепочка не дошла до прокручиваемого элемента — считаем по видимой части
+        var lr0 = box.getBoundingClientRect();
+        var ar0 = el.getBoundingClientRect();
+        box.scrollTop = Math.max(0, Math.min(max, box.scrollTop + ((ar0.top + ar0.height / 2) - (lr0.top + lr0.height / 2))));
+        return;
+      }
+      var target = rowTop + (el.offsetHeight || 0) / 2 - (box.clientHeight || 0) / 2;
+      box.scrollTop = Math.max(0, Math.min(max, target));
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(function () { requestAnimationFrame(run); });
+    else run();
+    // Обложки догружаются позже и меняют высоты строк — один раз доводим прокрутку,
+    // если трек всё ещё тот же и позиция «уехала» (приёмка 24.11.2026).
+    setTimeout(function () {
+      if (lastCenteredKey !== key) return;
+      var el = listEl.querySelector('.d2-row.playing');
+      if (!el || !box) return;
+      var b = box.getBoundingClientRect();
+      var r = el.getBoundingClientRect();
+      var off = (r.top + r.height / 2) - (b.top + b.height / 2);
+      if (Math.abs(off) > 4) run();
+    }, 400);
   }
 
   function renderAfter(st) {
