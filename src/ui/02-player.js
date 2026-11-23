@@ -305,7 +305,7 @@ if (A.getSetting) A.getSetting('ymEnabled').then(function (v){ SVC.ymOn = v !== 
     if (isUrlSrc(v) || srcOf(v) === 'lc') return { alt: ymLoggedIn ? 'ym' : 'yt', why: (srcOf(v) === 'lc' ? 'Файл' : srcName(v)) + ': ' + why };
     if (y) {
       if (isNetErr(why)) markYtDown(why);
-      if (SVC.ytOn && ytUsable()) { axLog('YouTube: наш способ не сработал (' + String(why).slice(0, 120) + ') — играю через плеер YouTube'); return { iframe: true }; }
+      if (SVC.ytOn && ytUsable()) { axLog('YouTube: наш способ не сработал (' + String(why).slice(0, 120) + ') — играю через плеер YouTube'); return { iframe: true, why: why }; }
       return { alt: 'ym', why: 'YouTube недоступен' };
     }
     if (SVC.ymweb && !/войди/i.test(why)) { axLog('Яндекс: поток не получен (' + String(why).slice(0, 120) + ') — пробую сайт Яндекс Музыки'); return { ymweb: true, why: why }; }
@@ -323,13 +323,28 @@ if (A.getSetting) A.getSetting('ymEnabled').then(function (v){ SVC.ymOn = v !== 
   // Заказ зрителя возвращается в «Заказы» (активные) с пометкой «не включился» — сам в очередь больше не встаёт.
   // Дальше: фон/«Всё в очередь» — следующий трек всегда; остальное — если включено «Включать фон после очереди» (без тишины),
   // иначе плеер ждёт стримера (решение владельца 26.10.2026).
+  // Трек не включился ни одним способом. Заказ возвращается в «Заказы» с пометкой (rqFailed),
+  // и очередь больше не ждёт стримера: через 5 секунд идём дальше, чтобы один неиграбельный
+  // заказ не держал остальные. Фон и списки уходят раньше — им ждать незачем.
+  // Решение владельца 20.11.2026 (раньше заказ останавливал очередь — решение 26.10.2026).
   function playFailed(v, why){
     if (!v || previewT) return;
-    if (v.req) rqFailed(v, why);
-    if (v.bg || v.fromList || waveCfg.on || spKeyOf(v)) {
-      setSub('⚠ ' + String(why || 'не играет').slice(0, 80) + ' — следующий');
-      setTimeout(function(){ if (queue[current] === v) advance(true); }, 1500);
-    }
+    var isReq = !!v.req;
+    if (isReq) rqFailed(v, why);
+    var wait = isReq ? 5000 : ((v.bg || v.fromList || waveCfg.on || spKeyOf(v)) ? 1500 : 0);
+    if (!wait) return;
+    setSub('⚠ ' + String(why || 'не играет').slice(0, 80) + ' — следующий');
+    // Таймер запоминаем на треке: если стример перезапустит этот же трек, старый отсчёт
+    // не должен срезать новую попытку (аудит 20.11.2026).
+    if (v._failT) clearTimeout(v._failT);
+    v._failT = setTimeout(function(){
+      v._failT = 0;
+      if (queue[current] !== v) return;
+      advance(true);
+      // Дальше играть нечего: убираем «— следующий» и возвращаем иконку, иначе вид
+      // «стоит на паузе» (аудит 20.11.2026).
+      if (!playingNow) { setSub(''); setPlayIcon('▶'); setPlayerBusy(false); }
+    }, wait);
   }
   // Без входа Яндекс пробует отрывок (ym-stream). Если не сыграло ничего и причина — вход,
   // показываем заметное сообщение с кнопкой: мелкую строку в подвале человек не видит.

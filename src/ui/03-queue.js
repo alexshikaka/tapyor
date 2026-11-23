@@ -159,6 +159,11 @@
       if (AX.ctx && AX.ctx.state === 'suspended') AX.ctx.resume().catch(noop);
       if (el !== master()) return;
       playingNow = true;
+      // «Заказ сыгран» сообщаем только когда пошёл звук: иначе провал воспроизведения
+      // оставался невидимым — заказ уже считался выполненным, и бот молчал (аудит 20.11.2026).
+      var pb = queue[current];
+      if (pb && pb._iframeT) { clearTimeout(pb._iframeT); pb._iframeT = 0; } // заиграло — сторож не нужен
+      if (pb && !pb._botPlayed) { pb._botPlayed = true; botNotify(pb, 'played'); }
       if (mode === 'iframe' || mode === 'ymweb') saveToday(); // у ytx/ymx нет своих событий сохранения
       var pv = queue[current];
       if (pv && pv._playT0 && !pv._playLogged) {
@@ -208,7 +213,7 @@
       }
       if (el === master() && el.getAttribute('src')) {
         var v = queue[current];
-        if (el === ytx && v && !previewT) { ytxStop(); failOver(v, 'ym', 'YouTube: ' + (YX.errText || 'не воспроизводится')); return; }
+        if (el === ytx && v && !previewT) { ytxStop(); failOver(v, 'ym', 'YouTube: ' + (YX.errText || (v && v._ytWhy) || 'не воспроизводится')); return; }
         if (el === ymx && v && !previewT) { ymxStop(); failOver(v, 'yt', 'Яндекс (сайт): ' + (YW.err || 'ошибка')); return; }
         if (v && (isUrlSrc(v) || srcOf(v) === 'lc') && !previewT) { failOver(v, ymLoggedIn ? 'ym' : 'yt', (srcOf(v) === 'lc' ? 'Файл не играет (формат?)' : srcName(v) + ': поток не играет')); return; }
         // Яндекс/YouTube: ссылку получили, но звук не пошёл (устарела после долгой паузы, не тот формат) —
@@ -219,7 +224,7 @@
           axLog('поток не играет: «' + (v.author || '') + ' — ' + v.title + '» (' + srcName(v) + ') — запасной путь');
           startMedia(v, fb); return;
         }
-        setErr('⚠ ' + (el === ytx ? 'YouTube: ' + (YX.errText || 'не воспроизводится') : 'не удалось воспроизвести поток'));
+        setErr('⚠ ' + (el === ytx ? 'YouTube: ' + (YX.errText || (v && v._ytWhy) || 'не воспроизводится') : 'не удалось воспроизвести поток'));
         if (v) playFailed(v, 'поток не играет');
       }
     });
@@ -335,8 +340,19 @@
       pendingResume = null; // встроенный плеер YouTube не перематываем
       [video, aud, aud2].forEach(function (el){ el.pause(); el.removeAttribute('src'); el.load(); });
       mode = 'iframe';
+      v._ytWhy = (r && r.why) || '';   // причина движка: пригодится, если и встроенный плеер не сыграет
       YX.fade = 1;
-      ytxLoad(v.id).catch(function (e){ setErr('⚠ ' + e.message); axLog('YouTube (встроенный плеер): ' + e.message); playFailed(v, e.message); });
+      ytxLoad(v.id).catch(function (e){ setErr('⚠ ' + e.message); axLog('YouTube (встроенный плеер): ' + e.message); playFailed(v, (r && r.why) || e.message); });
+      // Сторож: встроенный плеер у части роликов просто молчит — ни играет, ни сообщает об ошибке
+      // (проверено живьём 21.11.2026: эфир стоял 120 секунд). Тогда через 10 секунд считаем
+      // трек неиграбельным и идём дальше: стабильность эфира важнее.
+      if (v._iframeT) clearTimeout(v._iframeT);
+      v._iframeT = setTimeout(function(){
+        v._iframeT = 0;
+        if (queue[current] !== v || mode !== 'iframe' || playingNow) return;
+        axLog('YouTube (встроенный плеер): не заиграл за 10 секунд — считаю неиграбельным');
+        playFailed(v, (r && r.why) || 'встроенный плеер YouTube не заиграл');
+      }, 10000);
       return;
     }
     if (mode === 'iframe' || YX.vid) ytxStop();
@@ -396,7 +412,6 @@
     if (pendingResume && pendingResume.key !== srcOf(v) + ':' + v.id) pendingResume = null;
     playingNow = false; // новый трек ещё не заиграл
     v.played = true; delete v._mediaFb; // запасной путь при сбое звука — заново для каждого запуска
-    botNotify(v, 'played');
     rqSync(); // заказ заиграл — сразу переносим его в «выполненные», когда доиграет
     // в сыгранном — без повторов: та же песня раньше в ленте убирается, остаётся последняя
     var vk = srcOf(v) + ':' + v.id;
@@ -412,6 +427,13 @@
     renderQueue(true); renderWaveUi(); saveToday();
     if (v.bg) topUpWave(); // в классике это заодно дописывает волну в конец плейлиста
     setSub('Загружаю…');
+    v._ytWhy = '';   // причина прошлой попытки не должна прилипнуть к новой
+    // Стример мог перезапустить тот же трек — прежний отсчёт до скипа снимаем (аудит 20.11.2026).
+    if (v._failT) { clearTimeout(v._failT); v._failT = 0; }
+    if (v._iframeT) { clearTimeout(v._iframeT); v._iframeT = 0; } // и сторож встроенного плеера
+    // Прежняя цепочка получения потока больше не нужна: гасим её процесс, иначе быстрые
+    // переключения копят параллельные yt-dlp (аудит 20.11.2026).
+    if (A.ytCancel) A.ytCancel().catch(function(){});
     var r = await getStream(v);
     if (i !== current) return; // переключили, пока грузилось
     loadingIdx = -1;

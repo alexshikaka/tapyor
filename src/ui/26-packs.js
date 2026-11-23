@@ -37,7 +37,7 @@
   function packLicStrip(L){
     if (!L || L.state === 'full' || L.state === 'not-installed') return '';
     return '<div class="bot-lic"><span class="pill bot-pill">Пак стримера</span><span class="bot-lic-t">' + esc(packLicText(L)) + '</span>' +
-      (L.state === 'dev' ? '' : '<button class="btn" data-pack-open="1">Ключ и пробный период</button>' + (L.state === 'trial' || L.state === 'trial-ended' ? '<button class="btn ghost" data-pack-buy="1">Купить ключ</button>' : '')) + '</div>';
+      (L.state === 'dev' ? '' : '<button class="btn" data-pack-open="1">Ключ и пробный период</button>' + (L.state === 'trial' || L.state === 'trial-ended' ? '<button class="btn acc" data-pack-buy="1">Купить ключ</button>' : '')) + '</div>';
   }
   // Подсказка внутри «Чат-бота» и «Оверлея», когда функция недоступна (0.34.0, Б10).
   // Пункты меню теперь видны всегда; здесь объясняем, чего не хватает, и даём готовые действия.
@@ -61,14 +61,14 @@
     else if (L.state === 'broken') btns = '<button class="btn" data-pack-open="1">Переустановить пак</button>';
     else if (L.state === 'clock') btns = '<button class="btn ghost" data-pack-open="1">Пак стримера</button>';
     else btns = '<button class="btn ghost" data-pack-key="1">Ввести ключ</button>';
-    if (L.state === 'none' || L.state === 'trial-ended' || L.state === 'other-pc') btns += '<button class="btn ghost" data-pack-buy="1">Купить ключ</button>';
+    if (L.state === 'none' || L.state === 'trial-ended' || L.state === 'other-pc') btns += '<button class="btn acc" data-pack-buy="1">Купить ключ</button>';
     return '<div class="bot-note"><b>' + esc(title) + ' входит в пак стримера.</b> ' + esc(txt) +
       '<div class="bot-pair" style="margin-top:10px">' + btns + '</div></div>';
   }
   function openPackPane(){ setTab('settings', 'sPack'); packLoad(true).then(function(){ if (typeof showSettingsPane === 'function') showSettingsPane('sPack'); }); }
 
   function pkRow(title, desc, ctl){ return '<div class="srow"><div class="sl"><div class="st">' + title + '</div>' + (desc ? '<div class="sd">' + desc + '</div>' : '') + '</div>' + (ctl || '') + '</div>'; }
-  function pkBtn(act, text, ghost, dis){ return '<button class="btn' + (ghost ? ' ghost' : '') + '" data-pk="' + act + '"' + (dis || PK.busy ? ' disabled' : '') + '>' + esc(text) + '</button>'; }
+  function pkBtn(act, text, ghost, dis){ return '<button class="btn' + (ghost === 'acc' ? ' acc' : ghost ? ' ghost' : '') + '" data-pk="' + act + '"' + (dis || PK.busy ? ' disabled' : '') + '>' + esc(text) + '</button>'; }
 
   function packRender(){
     var box = $('packPanel'); if (!box) return;
@@ -95,7 +95,7 @@
       var lic = '<div class="card">' + pkRow('Состояние', esc(packLicText(L)), L.state === 'trial' ? '<span class="pill bot-pill">' + esc(packPillText(L)) + '</span>' : (L.state === 'full' ? '<span class="pill ok">куплен</span>' : ''));
       if (L.state !== 'full') {
         if (L.state === 'none' || L.state === 'other-pc') lic += pkRow('Попробовать бесплатно', '30 дней, один раз на компьютер. Нужен интернет, чтобы получить пробный период', pkBtn('trial', 'Попробовать 30 дней'));
-        lic += pkRow('Купить ключ', 'На GGSel: ключ приходит сразу после оплаты. Вставь его в строку «Ключ» ниже', pkBtn('buy', 'Купить ключ', L.state === 'trial'));
+        lic += pkRow('Купить ключ', 'На GGSel: ключ приходит сразу после оплаты. Вставь его в строку «Ключ» ниже', pkBtn('buy', 'Купить ключ', 'acc'));
         lic += pkRow('Ключ', 'Ключ вида TPR-XXXX-XXXX-XXXX — после покупки. Один ключ — до 3 компьютеров. Сюда же можно вставить строку лицензии tpl1.… от автора',
           PK.keyOpen ? '<div style="display:flex;gap:8px;flex-wrap:wrap"><input class="field mono" id="pkKey" placeholder="TPR-XXXX-XXXX-XXXX или tpl1.…" style="width:220px" autocomplete="off" spellcheck="false">' + pkBtn('activate', 'Активировать') + '</div>'
             : pkBtn('key', 'Ввести ключ'));

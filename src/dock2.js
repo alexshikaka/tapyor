@@ -5,6 +5,7 @@
   'use strict';
 
   var listEl = document.getElementById('d2list');
+  var scrollEl = document.getElementById('d2scroll');   // прокручивается он, список внутри
   var afterEl = document.getElementById('d2after');
   var qEl = document.getElementById('d2q');
   var findEl = document.getElementById('d2find');
@@ -191,6 +192,27 @@
     }
     if (!html) html = '<div class="d2-empty">' + (st.mode === 'live' ? 'Живая очередь пуста' : 'Плейлист пуст') + '</div>';
     listEl.innerHTML = html;
+    centerPlaying(st);
+  }
+
+  // Играющий трек всегда в середине видимой части списка: сменилась песня — список
+  // прокручивается так, чтобы она оказалась по центру. Если снизу песен не хватает,
+  // прокрутка упирается в конец — трек остаётся как можно ближе к середине.
+  // Прокручиваем только при СМЕНЕ играющего трека, иначе ручная прокрутка не удержится.
+  var lastCenteredKey = '';
+  function centerPlaying(st) {
+    var row = listEl.querySelector('.d2-row.playing');
+    if (!row) { lastCenteredKey = ''; return; }
+    var key = row.getAttribute('data-key') || row.getAttribute('data-i') || '';
+    if (st && st.np && st.np.key) key = key + '|' + st.np.key;
+    if (key === lastCenteredKey) return;   // тот же трек — не дёргаем список
+    lastCenteredKey = key;
+    var box = scrollEl || listEl;
+    var lr = box.getBoundingClientRect();
+    var ar = row.getBoundingClientRect();
+    var delta = (ar.top + ar.height / 2) - (lr.top + lr.height / 2);
+    var max = Math.max(0, box.scrollHeight - box.clientHeight);
+    box.scrollTop = Math.max(0, Math.min(max, box.scrollTop + delta));
   }
 
   function renderAfter(st) {

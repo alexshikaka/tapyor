@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('app', {
     getVersion: () => ipcRenderer.invoke('get-version'),
   buildInfo: () => ipcRenderer.invoke('build-info'),
   ytSearch: (query) => ipcRenderer.invoke('yt-search', query),
+  ytCancel: () => ipcRenderer.invoke('yt-cancel'),
   ytStream: (id) => ipcRenderer.invoke('yt-stream', id),
   ytSearchMore: (query, count) => ipcRenderer.invoke('yt-search-more', query, count),
   ymStatus: () => ipcRenderer.invoke('ym-status'),

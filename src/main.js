@@ -727,9 +727,16 @@ function setSbotAccepting(on) {
 }
 
 // M-01: на каждый вызов yt-dlp — временный файл cookies, после вызова done() удаляет его.
-function ytCookies(forStream) {
+function ytCookies(forStream, o) {
   const none = { args: [], done() {} };
-  if (!ytauth.hasCookies() || (forStream && !cfg('ytUseCookies'))) return none;
+  // Запрет куки целиком (правила заказов не разрешают 18+): иначе возрастной ролик
+  // мог бы заиграть «через вход», обойдя правило. Без куки он честно откажет по возрасту.
+  if (o && o.deny) return none;
+  if (!ytauth.hasCookies()) return none;
+  // Возрастное видео (18+): без входа YouTube не отдаёт поток вовсе, поэтому здесь решает
+  // не тумблер «использовать вход для воспроизведения», а сам факт входа. Куки идут только
+  // на такие ролики (минимум использования) и только если вход сохранён.
+  if (forStream && !cfg('ytUseCookies') && !(o && o.age)) return none;
   const t = ytauth.tempCookieFile();
   return t ? { args: ['--cookies', t.file], done: t.done } : none;
 }
@@ -771,7 +778,7 @@ function writeNowPlaying(info, force) {
 // R12: дочерние yt-dlp берутся на учёт при запуске; killAll() в will-quit гасит их.
 const childRegistry = childRegistryModule.create({ log: (m) => { try { log(m); } catch (e) {} } });
 const ytdlpModule = require('./main/ytdlp').setup({
-  app, fs, path, execFile, crypto, https, log, cfg, faultSim, ytCookies, fmtDur, streamBusy, srcDir: __dirname, childRegistry
+  app, fs, path, execFile, crypto, https, log, cfg, faultSim, ytCookies, ytHasCookies: () => ytauth.hasCookies(), fmtDur, streamBusy, srcDir: __dirname, childRegistry
 });
 
 // Окно входа в Яндекс: перенос без изменения поведения (A1) — сам код в src/main/login-yandex.js.
@@ -1657,6 +1664,9 @@ ipcMain.handle('build-info', () => BUILD);
       return r;
     } finally { inflight.delete(key); }
   }
+  // Переключили трек — гасим прежнее получение потока, чтобы не копить процессы yt-dlp
+  // и не блокировать обновление движка (аудит 20.11.2026).
+  ipcMain.handle('yt-cancel', () => ytdlpModule.cancelStream());
   ipcMain.handle('yt-stream', (event, id) => {
     streamBusy.begin();
     return getStream(id).finally(() => { streamBusy.end(); });
@@ -2614,6 +2624,29 @@ function applyAutoStart() {
       }
     } catch (e) { log('заказы: precision gate — ' + e.message); }
     const rules = reqRules();
+    // Возраст у YouTube-заказов иначе известен только в момент воспроизведения: поиск отдаёт
+    // ролики без возраста, и правило «18+ запрещены» срабатывало бы уже после попытки играть.
+    // Когда правило выключено, спрашиваем движок при приёме заказа — один раз на ролик
+    // (кеша нет только у свежих: ответ движка на 9 секунд, дальше результат уже в треке).
+    if (rules.explicitOk === false) {
+      await Promise.all(items.map(async (it) => {
+        const t = it.track;
+        if (!t || t.src !== 'yt' || t.explicit != null || !t.id) return;
+        try {
+          const j = await ytdlpModule.ydlJson(['https://www.youtube.com/watch?v=' + t.id, '--no-playlist'], 9000, { ytCookies: true });
+          if (!j) return;
+          if (j.error) {
+            // Без входа движок метаданные возрастного ролика не отдаёт, но сам отказ —
+            // уже достоверный признак: значит возраст есть, и правило должно сработать.
+            if (/confirm your age/i.test(String(j.error))) t.explicit = true;
+            return;
+          }
+          const age = Number(j.age_limit || 0) || 0;
+          t.ageLimit = age;
+          if (age >= 18) t.explicit = true;
+        } catch (e) { log('заказы: возраст ролика не узнал — ' + ((e && e.message) || e)); }
+      }));
+    }
     items.forEach((it) => {
       try { it.flags = it.track ? reqp.flags(it.track, d.text, rules) : []; }
       catch (e) { it.flags = [{ k: 'error', t: 'проверка не удалась' }]; log('заказы: flags — ' + e.message); }

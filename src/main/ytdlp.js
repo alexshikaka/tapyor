@@ -6,13 +6,23 @@ module.exports = { setup };
 
 function setup(ctx) {
   const {
-    app, fs, path, execFile, crypto, https, log, cfg, faultSim, ytCookies, fmtDur, streamBusy, srcDir, childRegistry
+    app, fs, path, execFile, crypto, https, log, cfg, faultSim, ytCookies, fmtDur, streamBusy, srcDir, childRegistry, ytHasCookies
   } = ctx;
+
+  // Есть ли сохранённый вход в YouTube: без него возрастной ролик не отдадут,
+  // и повторять запрос с куки бессмысленно (только тянет время).
+  // Спрашиваем при каждом обращении: вход может появиться уже после запуска программы,
+  // и тогда повтор с куки должен заработать сразу, а не после перезапуска.
+  const loginNow = () => (typeof ytHasCookies === 'function' ? !!ytHasCookies() : null);
 
   // YR1: сколько запусков yt-dlp сейчас живо. Пока счётчик не ноль, движок не обновляем:
   // подмена exe на лету ломает поиск, плейлист или поток, который уже стартовал.
   // Учёт child-registry — отдельный (он про убийство при выходе), его не трогаем.
   let ytdlpRuns = 0;
+
+  // Текущий процесс получения потока: при переключении трека его гасим, иначе быстрые клики
+  // копят параллельные yt-dlp и блокируют обновление движка (аудит 20.11.2026).
+  let streamChild = null;
 
   // R12: каждый запущенный yt-dlp встаёт на учёт. При выходе Тапёра учёт убивает
   // живые процессы, иначе они висят до своего тайм-аута (до 60 с) в диспетчере задач.
@@ -287,7 +297,8 @@ function setup(ctx) {
   function mapYdl(e, src) {
     const url = e.webpage_url || (/^https?:/.test(e.url || '') ? e.url : '') || e.original_url || '';
     const seconds = Math.round(e.duration || 0);
-    return { src: src || srcOfUrl(url), id: url, title: e.track || e.title || 'Без названия', author: e.artist || e.uploader || e.channel || '', seconds, duration: fmtDur(e.duration), thumb: bestThumb(e), live: !(seconds > 0) || e.is_live === true || e.live_status === 'is_live' || undefined };
+    const ageLimit = Number(e.age_limit || 0) || 0;   // 18+ у ролика (0 — обычный)
+    return { src: src || srcOfUrl(url), id: url, title: e.track || e.title || 'Без названия', author: e.artist || e.uploader || e.channel || '', seconds, ageLimit, explicit: ageLimit >= 18 || undefined, duration: fmtDur(e.duration), thumb: bestThumb(e), live: !(seconds > 0) || e.is_live === true || e.live_status === 'is_live' || undefined };
   }
   function ydlJson(args, timeout, o = {}) {
     return new Promise((resolve) => {
@@ -330,8 +341,23 @@ function setup(ctx) {
   }
 
   // Достать прямую ссылку на поток через yt-dlp (надёжный способ)
+  // Причина отказа человеческим языком: на карточке заказа и в чате нужен смысл, а не stderr.
+  // Сырой текст по-прежнему уходит в журнал.
+  function humanYtError(why) {
+    const s = String(why || '');
+    if (/confirm your age/i.test(s)) return 'возрастное видео (18+): нужен вход в YouTube';
+    if (/not made this video available in your country/i.test(s)) return 'ролик недоступен в стране стримера';
+    if (/blocked (it )?(due to|on) .*claim|claimed content|claims? by/i.test(s)) return 'ролик заблокирован по жалобе правообладателя';
+    if (/Requested format is not available/i.test(s)) return 'у ролика нет доступного формата';
+    if (/not a bot/i.test(s)) return 'YouTube требует вход: проверка «не робот»';
+    if (/Private video|members-only|join this channel/i.test(s)) return 'ролик закрыт: приватный или для участников';
+    if (/Video unavailable|This video is not available|unavailable in your/i.test(s)) return 'ролик недоступен';
+    const one = s.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)[0] || 'не удалось получить поток';
+    return ('движок YouTube: ' + one.replace(/^ERROR:\s*/i, '')).slice(0, 140);
+  }
   function streamViaYtDlp(videoUrl) {
-    return faultSim.applyCall('yt', () => new Promise((resolve) => {
+    return faultSim.applyCall('yt', () => new Promise(async (resolve) => {
+      try {
       const bin = ytdlpPath();
       const exists = fs.existsSync(bin);
       const t0 = Date.now();
@@ -342,42 +368,116 @@ function setup(ctx) {
       // иначе 1080/1440 дают звук без картинки. Если прямого видео нет — ошибка,
       // чтобы UI ушёл на iframe, а не играл один звук.
       const qh = q === '1440' ? 1440 : (q === '1080' ? 1080 : (q === '480' ? 480 : 720));
+      // Только прямые https-потоки. HLS (m3u8_native) <video> не умеет:
+      // иначе 1080/1440 дают звук без картинки. Если прямого видео нет — ошибка,
+      // чтобы UI ушёл на iframe, а не играл один звук.
       const direct = '[height<=' + qh + '][protocol^=http]';
-      const fmt = q === 'audio' ? 'ba[ext=m4a]/ba/b'
+      const strict = q === 'audio' ? 'ba[ext=m4a]/ba/b'
         : 'bv*' + direct + '[ext=mp4]+ba[ext=m4a]/bv*' + direct + '+ba/b' + direct;
-      const ck = ytCookies(true);
-      execTracked(bin, [
-        // видео + звук раздельно; иначе единый файл; иначе только звук
-        '-f', fmt,
-        '-g', '--no-playlist', '--no-warnings',
-        ...ck.args,
-        videoUrl
-      ], { timeout: 15000, windowsHide: true }, (err, stdout, stderr) => {
-        ck.done();
-        if (err) {
-          log('yt-dlp: ОШИБКА code=' + (err.code) + ' msg=' + (err.message || '') + ' | stderr=' + (stderr || ''));
-          resolve({ error: ('движок YouTube: ' + ((stderr || err.message || '').toString())).slice(0, 400) });
-          return;
-        }
-        const lines = (stdout || '').trim().split(/\r?\n/).filter(Boolean);
-        if (!lines.length) { log('yt-dlp: пустой вывод'); resolve({ error: 'yt-dlp: пустой ответ' }); return; }
-        if (lines.length >= 2) {
-          log('yt-dlp: успех, раздельные потоки (видео + звук), ' + (Date.now() - t0) + ' мс');
-          resolve({ videoUrl: lines[0], audioUrl: lines[1] });
-        } else if (q === 'audio') {
-          log('yt-dlp: успех, только звук, ' + (Date.now() - t0) + ' мс');
-          resolve({ audioUrl: lines[0] });
-        } else {
-          log('yt-dlp: успех, единый поток, ' + (Date.now() - t0) + ' мс');
-          resolve({ url: lines[0] });
-        }
+      // Запасные варианты (19.11): у части роликов строгий набор не подходит — YouTube отдаёт
+      // только HLS или другие контейнеры, и yt-dlp отвечает «Requested format is not available».
+      // Тогда пробуем мягче: без фильтра по https и по контейнеру. Возраст, блокировку и сеть
+      // НЕ повторяем: там второй заход бессмыслен и только тянет время.
+      // Фильтр по https сохраняем и здесь: HLS (m3u8) <video> не проигрывает, и мягкий
+      // вариант без этого фильтра уводил в iframe (проверено живьём 20.11.2026).
+      // Ослабляем только контейнер: у части роликов нет mp4/m4a, но прямые потоки есть.
+      const soft = q === 'audio'
+        ? 'ba[protocol^=http]/b[protocol^=http]'
+        : 'bv*[height<=' + qh + '][protocol^=http]+ba/b[height<=' + qh + '][protocol^=http]/b[protocol^=http]';
+      const tries = [strict, soft, 'b[protocol^=http]'];
+
+      // Одна попытка: адреса потоков для одного набора форматов. Свои куки — на каждую попытку,
+      // потому что временный файл удаляется сразу после вызова.
+      const once = (fmt, ms, opts) => new Promise((resolve) => {
+        const ck = ytCookies(true, { age: !!(opts && opts.age), deny: rulesNow.explicitOk === false });
+        const child = execTracked(bin, [
+          '-f', fmt,
+          '-g', '--no-playlist', '--no-warnings',
+          ...ck.args,
+          videoUrl
+        ], { timeout: ms, windowsHide: true }, (err, stdout, stderr) => {
+          ck.done();
+          if (streamChild === child) streamChild = null;
+          if (err) {
+            const why = String(stderr || err.message || '');
+            log('yt-dlp: ОШИБКА code=' + (err.code) + ' fmt=' + fmt.slice(0, 40) + ' msg=' + (err.message || '') + ' | stderr=' + why);
+            resolve({ ok: false, error: humanYtError(why), usedCookies: !!(ck.args && ck.args.length), age: /confirm your age/i.test(why), retry: /Requested format is not available/i.test(why) });
+            return;
+          }
+          const lines = (stdout || '').trim().split(/\r?\n/).filter(Boolean).filter((u) => !/\.m3u8(\?|$)/i.test(u));
+          // HLS-адрес плеер не проигрывает: считаем это неудачей и пробуем следующий набор,
+          // иначе трек «получен», а на деле уходит в iframe с потерей времени (аудит 20.11.2026).
+          if (!lines.length) { log('yt-dlp: пустой вывод'); resolve({ ok: false, error: 'yt-dlp: пустой ответ', retry: false }); return; }
+          resolve({ ok: true, lines });
+        });
+        // execTracked при ожидании обновления движка возвращает обещание, а не процесс —
+        // тогда запоминать нечего: гасить нечего.
+        if (child && typeof child.kill === 'function') streamChild = child;
       });
+
+      let last = { ok: false, error: 'движок YouTube: не удалось получить поток' };
+      let ageTried = false;
+      const rulesNow = cfg('reqRules') || {};
+      for (let k = 0; k < tries.length; k++) {
+        last = await once(tries[k], k === 0 ? 15000 : 12000, {});
+        if (last.ok) break;
+        // Возрастное видео. Правило 18+ решает, можно ли вообще пытаться: выключено — сразу отказ,
+        // даже вход не используем (куки — минимум, только там, где без них никак).
+        if (last.age) {
+          if (rulesNow.explicitOk === false) {
+            last = { ok: false, code: 'age-rule', error: 'возрастное видео (18+), а в правилах заказов 18+ запрещены' };
+            break;
+          }
+          // Входа не было — пробуем один раз с ним: без входа возрастной поток не отдают вовсе.
+          if (!ageTried && !last.usedCookies && loginNow() !== false) {
+            ageTried = true;
+            log('yt-dlp: ролик 18+ — пробую со входом');
+            last = await once(tries[0], 12000, { age: true });
+            if (last.ok) break;
+            if (!last.age) break;
+          }
+          log(last.usedCookies ? 'yt-dlp: ролик 18+ — вход не помог' : 'yt-dlp: ролик 18+ — нужен вход в YouTube');
+          last = last.usedCookies
+            ? { ok: false, code: 'age-cookie-fail', error: 'возрастное видео (18+): вход есть, но YouTube всё равно не отдал поток' }
+            : { ok: false, code: 'age-no-login', error: 'нужен вход в YouTube: ролик с возрастным ограничением' };
+          break;
+        }
+        if (!last.retry) break;   // дело не в формате — второй заход не поможет
+        if (k + 1 < tries.length) log('yt-dlp: формат не подошёл, пробую проще (попытка ' + (k + 2) + ' из ' + tries.length + ')');
+      }
+      if (!last.ok) { resolve({ error: last.error, code: last.code }); return; }
+      const lines = last.lines;
+      if (lines.length >= 2) {
+        log('yt-dlp: успех, раздельные потоки (видео + звук), ' + (Date.now() - t0) + ' мс');
+        resolve({ videoUrl: lines[0], audioUrl: lines[1] });
+      } else if (q === 'audio') {
+        log('yt-dlp: успех, только звук, ' + (Date.now() - t0) + ' мс');
+        resolve({ audioUrl: lines[0] });
+      } else {
+        log('yt-dlp: успех, единый поток, ' + (Date.now() - t0) + ' мс');
+        resolve({ url: lines[0] });
+      }
+      } catch (e) {
+        // Любое исключение внутри попытки должно давать ответ, а не оставлять вызов висеть:
+        // иначе окно остаётся на «Загружаю…» навсегда (аудит 20.11.2026).
+        resolve({ error: 'движок YouTube: ' + ((e && e.message) || String(e)).slice(0, 200) });
+      }
     }), { url: videoUrl, timeoutMs: 15000 }).catch((e) => ({ error: e && e.message ? e.message : String(e) }));
   }
+  // Погасить текущее получение потока (переключение трека, отмена). Возвращает true,
+  // если что-то действительно остановили. Процесс снимается с учёта сам, в своём колбэке.
+  function cancelStream() {
+    const c = streamChild;
+    streamChild = null;
+    if (!c) return false;
+    try { c.kill(); return true; } catch (e) { return false; }
+  }
+
   return {
     ytdlpBundled, ytdlpUserPath, ytdlpPath, ytdlpVersion, ensureYtdlp,
     ytdlpUpdate, ytdlpUpdateIfDue, ytdlpSearch, ytdlpPlaylist,
     bestThumb, srcOfUrl, mapYdl, ydlJson, scSearch, urlList, urlStream, streamViaYtDlp,
+    cancelStream,
     execTracked
   };
 }

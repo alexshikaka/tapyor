@@ -22,8 +22,14 @@ public class CPHInline
         string tpl = GRaw("tapyorTxtDropped").Trim();
         if (tpl.Length > 0)
         {
-            string text = Subst(tpl, user, track, "", "", reason);
+            string text = Subst(tpl, user, track, "", "", ReasonRu(reason));
             Say(text, "");
+        }
+        else if (reason == "failed")
+        {
+            // Заказ приняли, но проиграть не смогли. Раньше зритель не получал ничего: фразу
+            // он видел только если стример вписал tapyorTxtDropped (решение владельца 21.11.2026).
+            Say("@" + (user ?? "") + " воспроизведение невозможно", "");
         }
 
         string ack = AckUrl(ArgStr("eventId"));
@@ -66,6 +72,20 @@ public class CPHInline
     }
 
     // Единый набор подстановок: {user} {track} {place} {eta} {reason} {min} {who} (аудит 0.35).
+    // Причина снятия заказа человеческим языком: в чат нельзя отдавать служебный код
+    // («failed», «removed») — зритель не поймёт (решение владельца 21.11.2026).
+    private string ReasonRu(string reason)
+    {
+        switch ((reason ?? "").Trim())
+        {
+            case "failed": return "воспроизведение невозможно";
+            case "removed": return "стример убрал трек";
+            case "ban": return "заказ снят модератором";
+            case "closed": return "заказы закрыты";
+            default: return (reason ?? "").Trim();
+        }
+    }
+
     private string Subst(string tpl, string user, string track, string place, string eta, string reason, string min = "", string who = "")
     {
         if (string.IsNullOrEmpty(tpl)) return "";

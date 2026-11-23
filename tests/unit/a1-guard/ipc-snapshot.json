@@ -185,6 +185,7 @@
     "ymweb-play": 1,
     "ymweb-stop": 1,
     "yt-auth-status": 1,
+    "yt-cancel": 1,
     "yt-liked": 1,
     "yt-login-paste": 1,
     "yt-login-window": 1,

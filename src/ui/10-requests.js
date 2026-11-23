@@ -24,7 +24,7 @@
   function rqMatch(v, t){ if (rqSame(v, t)) return true; var a = rqName(v), b = rqName(t); return !!a && a === b; }
   function rqFlags(it){
     var f = (it.flags || []).slice();
-    if (it.failed && !it.state) f.push({ k: 'failed', t: 'не включился: ' + it.failed });
+    if (it.failed && !it.state) f.push({ k: 'failed', t: 'воспроизведение невозможно: ' + it.failed });
     else if (it.track && it.state !== 'added') {
       var cur = queue[current];
       // по «исполнитель — название»: одна песня в разных альбомах Яндекса имеет разные id
@@ -69,6 +69,8 @@
     var it = r.items[q.ii];
     if (!it || !it.track || !rqMatch(it.track, v)) it = r.items.filter(function (x){ return x.state === 'added' && x.track && rqMatch(x.track, v); })[0];
     if (!it) return;
+    // Отклонённый или снятый заказ не воскрешаем: сбой мог прийти по устаревшему смещению.
+    if (it.state && it.state !== 'added') return;
     delete it.state; it.failed = String(why || 'неполадка').replace(/^⚠\s*/, '').slice(0, 80);
     if (r.state === 'done') r.state = 'new';
     botNotify(v, 'dropped', 'failed');
@@ -121,7 +123,7 @@
         h += '<div class="rq-alt">' + alts.map(function (t, k){ return '<label><input type="radio" name="rqa' + id + '" value="' + k + '"' + ((RQ.pick[id] == null ? 0 : +RQ.pick[id]) === k ? ' checked' : '') + '>' + esc((t.author ? t.author + ' — ' : '') + t.title) + ' <span style="color:var(--tx4)">' + esc(srcName(t) + (t.duration ? ' · ' + t.duration : '')) + '</span></label>'; }).join('') + '</div>';
       }
       h += '<div class="rq-b">';
-      if (it.track) h += '<button class="pbtn qadd" data-rq="add" data-id="' + id + '">＋ В очередь</button><button class="rq-sm" data-rq="now" data-id="' + id + '">▶ Сейчас</button>';
+      if (it.track) h += '<button class="pbtn qadd" data-rq="add" data-id="' + id + '">' + (it.failed ? '↻ Попробовать ещё раз' : '＋ В очередь') + '</button><button class="rq-sm" data-rq="now" data-id="' + id + '">▶ Сейчас</button>';
       if (alts.length > 1) h += '<button class="rq-sm" data-rq="alts" data-id="' + id + '">' + (RQ.altOpen[id] ? 'Скрыть варианты' : 'Другие варианты (' + (alts.length - 1) + ')') + '</button>';
       if (it.link) h += '<button class="rq-sm" data-rq="link" data-id="' + id + '">Открыть ссылку</button>';
       h += '<button class="rq-sm" data-rq="find" data-id="' + id + '">Искать сам</button><button class="rq-sm" data-rq="skip" data-id="' + id + '">Не то</button></div>';
@@ -279,6 +281,8 @@
     else if (a === 'skip') { rqBotDrop(r, 'dropped', 'removed'); it.state = 'skip'; if (!rqPending(r).length) r.state = 'done'; rqSave(r); rqRender(); }
     else if (a === 'link') { A.openLink(it.link); }
     else if (a === 'find' || a === 'textfind') {
+      // Стример ищет заново — прежний сбой больше не про этот трек (аудит 20.11.2026).
+      if (it && it.failed) { delete it.failed; if (r) { rqSave(r); rqRender(); } }
       var q = (it && (it.query || (it.track && ((it.track.author || '') + ' ' + it.track.title)))) || (r && r.text) || '';
       setTab('search'); search.value = q.trim(); doSearch({ nav: true });
     } else if (a === 'reparse') {
